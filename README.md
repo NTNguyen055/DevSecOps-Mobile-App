@@ -1,552 +1,590 @@
-# Full-Stack E-Commerce App
+# 🛒 Tổng Quan Dự Án: Full-Stack E-Commerce App (DevSecOps-App)
 
-A full-stack e-commerce application built with React, Node.js, Express, PostgreSQL, Google OAuth, and Stripe Checkout.
+> **Tên package**: `ecommerce-api` v1.0.0 · **License**: MIT (Nevin Kadlec, 2026)
+> **Brand name**: **NK-Forge: Storefront**
+> **Live Demo**: https://fullstack-ecommerce-app-qhpb.onrender.com
+> **Repo**: https://github.com/NK-Forge/fullstack-ecommerce-app
 
-This project began as an e-commerce REST API and was extended into a deployed full-stack application with an interactive React client. Users can register, log in, authenticate with Google, browse products, manage a cart, complete checkout through Stripe, and view paid order history.
+---
 
-## Live Demo
+## 1. Tổng Quan Kiến Trúc
 
-```text
-https://fullstack-ecommerce-app-qhpb.onrender.com
+Đây là một ứng dụng **E-Commerce full-stack** với kiến trúc **monorepo** gồm:
+
+```mermaid
+graph TB
+    subgraph "Client - React + Vite"
+        A["React 19 SPA"] --> B["React Router v7"]
+        A --> C["Auth Context + localStorage"]
+        A --> D["API Client (fetch)"]
+    end
+    
+    subgraph "Server - Node.js + Express 5"
+        E["Express App"] --> F["Routes (8 routers)"]
+        F --> G["Models (4 data models)"]
+        G --> H["PostgreSQL via pg Pool"]
+        E --> I["JWT Auth Middleware"]
+        E --> J["Swagger UI"]
+    end
+    
+    subgraph "External Services"
+        K["Neon PostgreSQL"]
+        L["Stripe Checkout + Webhooks"]
+        M["Google OAuth 2.0"]
+        N["Render (Deployment)"]
+    end
+    
+    D --> E
+    H --> K
+    E --> L
+    E --> M
+    E --> N
 ```
 
-## Repository
+| Layer | Stack | Chi tiết |
+|-------|-------|----------|
+| **Frontend** | React 19, Vite 8, React Router 7 | SPA, CSS thuần, AuthContext, ProtectedRoute |
+| **Backend** | Node.js ≥22, Express 5 | REST API, CommonJS modules |
+| **Database** | PostgreSQL (Neon Postgres) | 6 bảng, SSL connection |
+| **Auth** | JWT + bcrypt + Google OAuth 2.0 | Token 1h, localStorage session |
+| **Payment** | Stripe Checkout + Webhooks | Test mode, signature verification |
+| **Testing** | Mocha + Chai + Supertest | 583 dòng smoke test |
+| **Deployment** | Render | Express serve static React build |
+| **Docs** | Swagger UI + OpenAPI YAML | Tự host tại `/api-docs` |
+
+---
+
+## 2. Cấu Trúc Thư Mục
 
 ```text
-https://github.com/NK-Forge/fullstack-ecommerce-app
+DevSecOps-App/
+├── app.js                        # Express app setup, middleware, routes
+├── server.js                     # HTTP server entry point (port 4001)
+├── package.json                  # Backend dependencies & scripts
+├── .env.example                  # 12 biến môi trường mẫu
+├── .gitignore                    # 77 rules (node_modules, .env, dist, etc.)
+├── LICENSE                       # MIT License
+├── README.md                     # 553 dòng documentation
+│
+├── client/                       # ── FRONTEND (React + Vite) ──
+│   ├── index.html                # HTML entry, title: "NK-Forge:Storefront"
+│   ├── package.json              # React 19, Vite 8, react-router-dom 7
+│   ├── vite.config.js            # Plugin: @vitejs/plugin-react
+│   ├── eslint.config.js          # ESLint config
+│   ├── .env.example              # VITE_API_BASE_URL
+│   ├── public/                   # Static assets (favicon)
+│   └── src/
+│       ├── main.jsx              # ReactDOM.createRoot, BrowserRouter, AuthProvider
+│       ├── App.jsx               # Layout + Routes (12 routes)
+│       ├── App.css               # 24KB CSS toàn bộ styling
+│       ├── index.css             # CSS reset cơ bản
+│       ├── api/
+│       │   └── apiClient.js      # 13 API functions (fetch-based)
+│       ├── auth/
+│       │   ├── authContext.js     # React.createContext
+│       │   ├── AuthProvider.jsx   # Token/user state, login/logout/OAuth
+│       │   └── useAuth.js        # Custom hook
+│       ├── components/
+│       │   └── ProtectedRoute.jsx # Redirect nếu chưa auth
+│       ├── pages/                 # 11 page components
+│       │   ├── HomePage.jsx
+│       │   ├── ProductsPage.jsx   # Catalog + product cards
+│       │   ├── ProductDetailsPage.jsx
+│       │   ├── CartPage.jsx       # 9.2KB - full cart management
+│       │   ├── CheckoutPage.jsx   # Stripe checkout session
+│       │   ├── CheckoutSuccessPage.jsx
+│       │   ├── OrdersPage.jsx     # Order history
+│       │   ├── LoginPage.jsx      # Email/password + Google OAuth
+│       │   ├── RegisterPage.jsx   # Email/password registration
+│       │   ├── OAuthCallbackPage.jsx # Google OAuth callback handler
+│       │   └── NotFoundPage.jsx
+│       └── assets/                # 8 files (images ~1.8-2.1MB each)
+│           ├── forge-storefront-hero.png
+│           ├── non-home-bg.png
+│           ├── forge_notebook.png
+│           ├── forge_pen.png
+│           ├── smoke_test_product.png
+│           ├── hero.png
+│           ├── react.svg
+│           └── vite.svg
+│
+├── db/                           # ── DATABASE ──
+│   ├── index.js                  # pg Pool connection (SSL, DATABASE_URL)
+│   └── schema.sql                # 6 tables DDL
+│
+├── middleware/                   # ── MIDDLEWARE ──
+│   └── authMiddleware.js         # requireAuth (JWT verify) + requireSameUser
+│
+├── models/                       # ── DATA MODELS ──
+│   ├── userModel.js              # CRUD users (6 functions)
+│   ├── productModel.js           # CRUD products (5 functions)
+│   ├── cartModel.js              # Cart operations (6 functions)
+│   └── orderModel.js             # Order operations (6 functions, transaction support)
+│
+├── routes/                       # ── API ROUTES ──
+│   ├── auth.routes.js            # POST /register, POST /login, GET /me
+│   ├── oauth.routes.js           # GET /google, GET /google/callback
+│   ├── products.routes.js        # CRUD /products
+│   ├── users.routes.js           # CRUD /users (protected)
+│   ├── cart.routes.js            # Cart CRUD /cart/:userId (ownership enforced)
+│   ├── orders.routes.js          # Orders CRUD /orders (ownership enforced)
+│   ├── payments.routes.js        # POST /checkout-session/:userId
+│   └── paymentWebhooks.routes.js # POST /webhook (Stripe signature verify)
+│
+├── scripts/                      # ── SCRIPTS ──
+│   └── apply-schema.js           # Đọc schema.sql và chạy vào DB
+│
+├── test/                         # ── TESTING ──
+│   └── smoke.test.js             # 30+ test cases, 583 dòng
+│
+└── docs/                         # ── DOCUMENTATION ──
+    ├── api-plan.md               # Endpoint plan table
+    └── openapi.yaml              # 12.9KB OpenAPI 3.0 spec
 ```
 
-## Tech Stack
+---
 
-### Frontend
+## 3. Database Schema (6 Bảng)
 
-- React
-- Vite
-- React Router
-- CSS
+```mermaid
+erDiagram
+    users {
+        SERIAL id PK
+        VARCHAR username UK
+        VARCHAR email UK
+        TEXT password_hash
+        TIMESTAMP created_at
+        TIMESTAMP updated_at
+    }
+    products {
+        SERIAL id PK
+        VARCHAR name
+        TEXT description
+        NUMERIC price
+        INTEGER inventory_quantity
+        TIMESTAMP created_at
+        TIMESTAMP updated_at
+    }
+    carts {
+        SERIAL id PK
+        INTEGER user_id FK,UK
+        TIMESTAMP created_at
+        TIMESTAMP updated_at
+    }
+    cart_items {
+        SERIAL id PK
+        INTEGER cart_id FK
+        INTEGER product_id FK
+        INTEGER quantity
+        TIMESTAMP created_at
+        TIMESTAMP updated_at
+    }
+    orders {
+        SERIAL id PK
+        INTEGER user_id FK
+        VARCHAR status
+        NUMERIC total
+        TIMESTAMP created_at
+        TIMESTAMP updated_at
+    }
+    order_items {
+        SERIAL id PK
+        INTEGER order_id FK
+        INTEGER product_id FK
+        INTEGER quantity
+        NUMERIC price_at_purchase
+        TIMESTAMP created_at
+    }
+    
+    users ||--o| carts : "has one"
+    users ||--o{ orders : "has many"
+    carts ||--o{ cart_items : "contains"
+    products ||--o{ cart_items : "in cart"
+    orders ||--o{ order_items : "contains"
+    products ||--o{ order_items : "purchased"
+```
 
-### Backend
+> [!IMPORTANT]
+> - `carts.user_id` là **UNIQUE** → mỗi user chỉ có 1 cart
+> - `cart_items(cart_id, product_id)` là **UNIQUE** → tránh trùng sản phẩm trong cart
+> - `order_items.price_at_purchase` → snapshot giá tại thời điểm mua
+> - Tất cả FK đều `ON DELETE CASCADE`
 
-- Node.js
-- Express
-- PostgreSQL
-- Neon Postgres
-- bcrypt
-- JSON Web Tokens
-- Google OAuth
-- Stripe Checkout
-- Stripe Webhooks
-- Swagger UI
-- OpenAPI YAML
+---
 
-### Testing and Tooling
+## 4. API Endpoints (Tổng cộng ~25 endpoints)
 
-- Mocha
-- Chai
-- Supertest
-- ESLint
-- dotenv
-- Render
+### 4.1 Health
+| Method | Endpoint | Auth | Mô tả |
+|--------|----------|------|--------|
+| `GET` | `/` | ❌ | Health check (dev only, production serve React) |
+| `GET` | `/health/db` | ❌ | Database health check |
 
-## Features
+### 4.2 Auth
+| Method | Endpoint | Auth | Mô tả |
+|--------|----------|------|--------|
+| `POST` | `/auth/register` | ❌ | Đăng ký user (email → username) |
+| `POST` | `/auth/login` | ❌ | Đăng nhập, trả JWT (1h) |
+| `GET` | `/auth/me` | 🔒 JWT | Thông tin user hiện tại |
 
-### User Accounts
+### 4.3 OAuth
+| Method | Endpoint | Auth | Mô tả |
+|--------|----------|------|--------|
+| `GET` | `/oauth/google` | ❌ | Redirect đến Google consent |
+| `GET` | `/oauth/google/callback` | ❌ | Callback xử lý Google OAuth |
 
-- User registration
-- User login with JWT authentication
-- Google OAuth login
-- Logout
-- Protected client routes
-- Persistent client session using local storage
+### 4.4 Users (Protected)
+| Method | Endpoint | Auth | Mô tả |
+|--------|----------|------|--------|
+| `GET` | `/users` | 🔒 JWT | Lấy tất cả users |
+| `GET` | `/users/:id` | 🔒 JWT | Lấy user theo ID |
+| `PUT` | `/users/:id` | 🔒 JWT | Cập nhật user |
+| `DELETE` | `/users/:id` | 🔒 JWT | Xóa user |
 
-### Product Browsing
+### 4.5 Products
+| Method | Endpoint | Auth | Mô tả |
+|--------|----------|------|--------|
+| `GET` | `/products` | ❌ | Lấy tất cả sản phẩm |
+| `GET` | `/products/:id` | ❌ | Lấy sản phẩm theo ID |
+| `POST` | `/products` | 🔒 JWT | Tạo sản phẩm mới |
+| `PUT` | `/products/:id` | 🔒 JWT | Cập nhật sản phẩm |
+| `DELETE` | `/products/:id` | 🔒 JWT | Xóa sản phẩm |
 
-- Product catalog page
-- Product details page
-- Public product browsing
-- Product price and inventory display
+### 4.6 Cart (Protected + Ownership)
+| Method | Endpoint | Auth | Mô tả |
+|--------|----------|------|--------|
+| `GET` | `/cart/:userId` | 🔒 JWT + 👤 Owner | Lấy giỏ hàng |
+| `POST` | `/cart/:userId/items` | 🔒 JWT + 👤 Owner | Thêm sản phẩm vào giỏ |
+| `PUT` | `/cart/:userId/items/:productId` | 🔒 JWT + 👤 Owner | Cập nhật số lượng |
+| `DELETE` | `/cart/:userId/items/:productId` | 🔒 JWT + 👤 Owner | Xóa sản phẩm khỏi giỏ |
+| `DELETE` | `/cart/:userId` | 🔒 JWT + 👤 Owner | Xóa toàn bộ giỏ hàng |
 
-### Cart
+### 4.7 Orders (Protected + Partial Ownership)
+| Method | Endpoint | Auth | Mô tả |
+|--------|----------|------|--------|
+| `POST` | `/orders/:userId` | 🔒 JWT + 👤 Owner | Tạo order từ cart (transaction) |
+| `GET` | `/orders` | 🔒 JWT | Lấy tất cả orders |
+| `GET` | `/orders/:id` | 🔒 JWT | Lấy order theo ID |
+| `GET` | `/orders/user/:userId` | 🔒 JWT + 👤 Owner | Lấy order history của user |
+| `PUT` | `/orders/:id` | 🔒 JWT | Cập nhật status |
+| `DELETE` | `/orders/:id` | 🔒 JWT | Xóa order |
 
-- Add products to cart
-- View cart contents
-- Increase and decrease item quantity
-- Remove individual items
-- Clear cart
-- User ownership enforcement for cart routes
+### 4.8 Payments (Stripe)
+| Method | Endpoint | Auth | Mô tả |
+|--------|----------|------|--------|
+| `POST` | `/payments/checkout-session/:userId` | 🔒 JWT + 👤 Owner | Tạo Stripe Checkout Session |
+| `POST` | `/payments/webhook` | 🔐 Stripe Signature | Stripe webhook fulfillment |
 
-### Checkout and Payments
+---
 
-- Stripe Checkout Session creation
-- Hosted Stripe checkout page
-- Stripe webhook fulfillment
-- Webhook signature verification
-- Paid order creation after confirmed checkout
-- Server-side cart data used for Stripe line items
+## 5. Luồng Hoạt Động Chính
 
-### Orders
+### 5.1 Luồng Đăng Ký / Đăng Nhập
 
-- Order history page
-- Paid order status display
-- User ownership enforcement for order-history routes
-- Order item snapshots preserve price-at-purchase data
+```mermaid
+sequenceDiagram
+    participant U as User/Browser
+    participant R as React App
+    participant E as Express API
+    participant DB as PostgreSQL
+    
+    U->>R: Nhập email + password
+    R->>E: POST /auth/register
+    E->>E: bcrypt.hash(password, 10)
+    E->>DB: INSERT INTO users
+    DB-->>E: user record
+    E-->>R: 201 + user info
+    
+    U->>R: Đăng nhập
+    R->>E: POST /auth/login
+    E->>DB: SELECT user WHERE email
+    E->>E: bcrypt.compare()
+    E->>E: jwt.sign({id, username, email}, secret, 1h)
+    E-->>R: 200 + token + user
+    R->>R: localStorage.setItem(token, user)
+```
 
-### Deployment
-
-- Deployed on Render
-- Express serves the built React client in production
-- Same-origin API calls supported in production
-- Environment-based configuration for local and deployed environments
-
-## Project Structure
+### 5.2 Luồng Google OAuth
 
 ```text
-fullstack-ecommerce-app/
-├─ app.js
-├─ server.js
-├─ client/
-│  ├─ index.html
-│  ├─ package.json
-│  ├─ vite.config.js
-│  └─ src/
-│     ├─ api/
-│     ├─ auth/
-│     ├─ components/
-│     ├─ pages/
-│     ├─ App.jsx
-│     ├─ App.css
-│     ├─ index.css
-│     └─ main.jsx
-├─ db/
-│  ├─ index.js
-│  └─ schema.sql
-├─ docs/
-│  ├─ api-plan.md
-│  └─ openapi.yaml
-├─ middleware/
-│  └─ authMiddleware.js
-├─ models/
-│  ├─ cartModel.js
-│  ├─ orderModel.js
-│  ├─ productModel.js
-│  └─ userModel.js
-├─ routes/
-│  ├─ auth.routes.js
-│  ├─ cart.routes.js
-│  ├─ oauth.routes.js
-│  ├─ orders.routes.js
-│  ├─ paymentWebhooks.routes.js
-│  ├─ payments.routes.js
-│  ├─ products.routes.js
-│  └─ users.routes.js
-├─ test/
-│  └─ smoke.test.js
-├─ .env.example
-├─ package.json
-└─ README.md
+React Login Page → Express /oauth/google → Google Consent Screen
+→ Express /oauth/google/callback (verify token, find/create user)
+→ Redirect to React /oauth/callback#token=...
+→ React reads hash fragment, calls /auth/me, stores session
 ```
 
-## Environment Variables
+### 5.3 Luồng Mua Hàng & Thanh Toán
 
-Create a `.env` file in the project root using `.env.example` as a guide.
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant R as React
+    participant E as Express
+    participant S as Stripe
+    participant DB as PostgreSQL
+    
+    U->>R: Add to cart
+    R->>E: POST /cart/:userId/items (JWT)
+    E->>DB: INSERT/UPSERT cart_items
+    
+    U->>R: Checkout
+    R->>E: POST /payments/checkout-session/:userId (JWT)
+    E->>DB: Get cart items + product prices
+    E->>S: stripe.checkout.sessions.create()
+    S-->>E: session.url
+    E-->>R: redirect URL
+    R->>S: Redirect to Stripe hosted page
+    
+    U->>S: Pay (4242 4242 4242 4242)
+    S->>E: POST /payments/webhook (signature)
+    E->>E: Verify stripe signature
+    E->>DB: BEGIN transaction
+    E->>DB: Create order + order_items
+    E->>DB: Deduct inventory
+    E->>DB: Clear cart
+    E->>DB: COMMIT
+    E->>DB: UPDATE order status = 'paid'
+    
+    S-->>R: Redirect to /checkout/success
+```
+
+---
+
+## 6. Authentication & Security
+
+### Middleware Chain
+
+```javascript
+// requireAuth: verify JWT → req.user = decoded payload
+// requireSameUser('userId'): req.params.userId === req.user.id
+```
+
+| Cơ chế | Chi tiết |
+|--------|---------|
+| **Password hashing** | bcrypt, salt rounds = 10 |
+| **JWT** | 1h expiry, payload: `{id, username, email}` |
+| **Ownership enforcement** | `requireSameUser` middleware trên cart + order-history + checkout |
+| **OAuth state** | JWT-signed state param, 10min expiry, nonce |
+| **Stripe webhook** | `constructEvent()` signature verification |
+| **CORS** | Origin: `CLIENT_ORIGIN` env var |
+| **Session persistence** | Client-side via `localStorage` |
+
+> [!WARNING]
+> **Hạn chế bảo mật đã biết:**
+> - Chưa có **role-based authorization** (admin vs user)
+> - Routes admin-style (GET /users, DELETE /products, etc.) chỉ check JWT, không check role
+> - Chưa có account-linking rules cho OAuth + email/password cùng email
+> - Chưa có persistent Stripe event IDs cho webhook idempotency
+
+---
+
+## 7. Frontend (React) Chi Tiết
+
+### 7.1 Routes
+
+| Path | Component | Protected? | Mô tả |
+|------|-----------|-----------|--------|
+| `/` | `HomePage` | ❌ | Hero landing page |
+| `/products` | `ProductsPage` | ❌ | Catalog sản phẩm |
+| `/products/:productId` | `ProductDetailsPage` | ❌ | Chi tiết sản phẩm |
+| `/cart` | `CartPage` | 🔒 | Giỏ hàng |
+| `/checkout` | `CheckoutPage` | 🔒 | Thanh toán |
+| `/checkout/success` | `CheckoutSuccessPage` | 🔒 | Thanh toán thành công |
+| `/orders` | `OrdersPage` | 🔒 | Lịch sử đơn hàng |
+| `/login` | `LoginPage` | ❌ | Đăng nhập |
+| `/register` | `RegisterPage` | ❌ | Đăng ký |
+| `/oauth/callback` | `OAuthCallbackPage` | ❌ | OAuth callback handler |
+| `*` | `NotFoundPage` | ❌ | 404 |
+
+### 7.2 Auth System (Client)
+
+```text
+AuthProvider (Context)
+├── State: token, user (initialized from localStorage)
+├── login(credentials) → POST /auth/login → store session
+├── completeOAuthLogin(oauthToken) → GET /auth/me → store session
+├── refreshCurrentUser() → GET /auth/me → update user
+└── logout() → clear localStorage + state
+```
+
+### 7.3 API Client
+
+File [apiClient.js](file:///d:/Projects/DevSecOps-App/client/src/api/apiClient.js) — 13 exported functions:
+
+| Function | Endpoint | Auth |
+|----------|----------|------|
+| `getProducts()` | `GET /products` | ❌ |
+| `getProduct(id)` | `GET /products/:id` | ❌ |
+| `registerUser(data)` | `POST /auth/register` | ❌ |
+| `loginUser(creds)` | `POST /auth/login` | ❌ |
+| `getCurrentUser(token)` | `GET /auth/me` | 🔒 |
+| `getGoogleOAuthUrl()` | Returns URL string | — |
+| `getCart(userId, token)` | `GET /cart/:userId` | 🔒 |
+| `addCartItem(...)` | `POST /cart/:userId/items` | 🔒 |
+| `updateCartItem(...)` | `PUT /cart/:userId/items/:productId` | 🔒 |
+| `removeCartItem(...)` | `DELETE /cart/:userId/items/:productId` | 🔒 |
+| `clearCart(...)` | `DELETE /cart/:userId` | 🔒 |
+| `createOrder(...)` | `POST /orders/:userId` | 🔒 |
+| `createCheckoutSession(...)` | `POST /payments/checkout-session/:userId` | 🔒 |
+| `getUserOrders(...)` | `GET /orders/user/:userId` | 🔒 |
+
+### 7.4 UI/UX
+
+- Background images khác nhau cho Home vs non-Home pages
+- Conditional navigation: Home, Products (public) | Cart, Orders (auth) | Login, Register (guest)
+- Auth status bar hiển thị email khi đã đăng nhập
+- Brand: **NK** badge + "Forge: Storefront"
+
+---
+
+## 8. Backend Data Models
+
+### [userModel.js](file:///d:/Projects/DevSecOps-App/models/userModel.js)
+`createUser` · `findUserByEmail` · `getAllUsers` · `getUserById` · `updateUser` · `deleteUser`
+
+### [productModel.js](file:///d:/Projects/DevSecOps-App/models/productModel.js)
+`getAllProducts` · `getProductById` · `createProduct` · `updateProduct` · `deleteProduct`
+
+### [cartModel.js](file:///d:/Projects/DevSecOps-App/models/cartModel.js)
+`getOrCreateCartByUserId` · `getCartByUserId` (với JOIN products) · `addItemToCart` (UPSERT) · `updateCartItem` · `removeCartItem` · `clearCart`
+
+### [orderModel.js](file:///d:/Projects/DevSecOps-App/models/orderModel.js)
+`getOrderById` (với JOIN order_items + products) · `getAllOrders` · `getOrdersByUserId` · `createOrderFromCart` (**transaction**: check inventory → create order → insert items → deduct inventory → clear cart) · `updateOrderStatus` · `deleteOrder`
+
+> [!NOTE]
+> `createOrderFromCart` là function phức tạp nhất — sử dụng **database transaction** với `BEGIN/COMMIT/ROLLBACK` để đảm bảo tính toàn vẹn dữ liệu khi tạo order.
+
+---
+
+## 9. NPM Scripts & Dependencies
+
+### Backend Scripts
+| Script | Command | Mô tả |
+|--------|---------|--------|
+| `npm start` | `node server.js` | Production start |
+| `npm run dev` | `nodemon server.js` | Development (hot reload) |
+| `npm test` | `mocha "test/**/*.test.js"` | Smoke tests |
+| `npm run db:schema` | `node scripts/apply-schema.js` | Apply DB schema |
+| `npm run build` | Client CI + build + prune | Production build |
+
+### Backend Dependencies (9)
+| Package | Version | Mục đích |
+|---------|---------|---------|
+| express | ^5.2.1 | Web framework (**Express 5**) |
+| pg | ^8.20.0 | PostgreSQL client |
+| bcrypt | ^6.0.0 | Password hashing |
+| jsonwebtoken | ^9.0.3 | JWT auth |
+| cors | ^2.8.6 | CORS headers |
+| dotenv | ^17.4.2 | Env variables |
+| stripe | ^22.1.1 | Stripe payments |
+| google-auth-library | ^10.6.2 | Google OAuth |
+| swagger-ui-express | ^5.0.1 | API docs UI |
+| yamljs | ^0.3.0 | Parse OpenAPI YAML |
+
+### Frontend Dependencies (3)
+| Package | Version |
+|---------|---------|
+| react | ^19.2.6 |
+| react-dom | ^19.2.6 |
+| react-router-dom | ^7.15.0 |
+
+---
+
+## 10. Environment Variables (12)
 
 ```env
-NODE_ENV=development
+# Server
 PORT=4001
-DATABASE_URL=postgresql://username:password@host/database?sslmode=require
-JWT_SECRET=replace-with-your-own-secret
-CLIENT_ORIGIN=http://localhost:5173
+NODE_ENV=development
+DATABASE_URL=postgresql://...?sslmode=require
+JWT_SECRET=your-secret
 
-STRIPE_SECRET_KEY=sk_test_replace-with-your-stripe-secret-key
-STRIPE_WEBHOOK_SECRET=whsec_replace-with-your-stripe-webhook-secret
+# Stripe
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_WEBHOOK_SECRET=whsec_...
 STRIPE_CURRENCY=usd
 
-GOOGLE_CLIENT_ID=replace-with-your-google-client-id
-GOOGLE_CLIENT_SECRET=replace-with-your-google-client-secret
+# Client
+CLIENT_ORIGIN=http://localhost:5173
+
+# Google OAuth
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
 GOOGLE_CALLBACK_URL=http://localhost:4001/oauth/google/callback
-```
 
-Create a `client/.env` file for local frontend development:
-
-```env
+# Frontend (.env riêng trong client/)
 VITE_API_BASE_URL=http://localhost:4001
 ```
 
-Do not commit real `.env` files or production secrets.
+---
 
-## Installation
+## 11. Testing
 
-Install backend dependencies from the project root:
+File [smoke.test.js](file:///d:/Projects/DevSecOps-App/test/smoke.test.js) — **30+ test cases** covering:
 
-```bash
-npm install
-```
+| Category | Tests |
+|----------|-------|
+| Health | API running, DB connection |
+| Auth | Register, login, JWT verify, reject without token |
+| OAuth | Config error handling, callback validation |
+| Products | Create, read all, read one, update, delete |
+| Cart | Add item, get cart, update item, ownership rejection |
+| Payments | Stripe webhook config, signature validation, valid signed event |
+| Checkout | Auth required, ownership check, config error |
+| Orders | Create from cart, get all, get by ID, get by user, update status |
+| Users | Get all, get by ID, update |
+| Cleanup | Delete test order, product, users |
 
-Install frontend dependencies:
+> [!TIP]
+> Tests chạy trực tiếp với database thật (Neon PostgreSQL) — cần `DATABASE_URL` và `JWT_SECRET` trong `.env`.
 
-```bash
-npm install --prefix client
-```
+---
 
-## Database Setup
-
-The database schema is located at:
-
-```text
-db/schema.sql
-```
-
-Run the SQL in your PostgreSQL database or Neon SQL Editor to create the required tables.
-
-Expected tables:
+## 12. Deployment (Render)
 
 ```text
-users
-products
-carts
-cart_items
-orders
-order_items
-```
-
-## Running Locally
-
-Start the backend from the project root:
-
-```bash
-npm run dev
-```
-
-The backend runs at:
-
-```text
-http://localhost:4001
-```
-
-Start the frontend from the `client/` directory:
-
-```bash
-cd client
-npm run dev
-```
-
-The frontend runs at:
-
-```text
-http://localhost:5173
-```
-
-## Production Build
-
-From the project root:
-
-```bash
-npm run build
-```
-
-The root build script installs client build dependencies, builds the React client, and prunes client dev dependencies afterward.
-
-## Running Tests
-
-From the project root:
-
-```bash
-npm test
-```
-
-The smoke test suite verifies the main backend flow, including:
-
-- API health
-- Database health
-- User registration
-- User login
-- JWT-protected auth route
-- Google OAuth configuration handling
-- Product creation, retrieval, update, and deletion
-- Cart item creation, retrieval, update, removal, and ownership checks
-- Stripe Checkout Session route security checks
-- Stripe webhook validation checks
-- Order creation from cart
-- Order retrieval and status update
-- Order-history ownership checks
-- User retrieval and update
-- Cleanup of test order, product, and users
-
-## Client Verification
-
-From the `client/` directory:
-
-```bash
-npm run build
-npm run lint
-```
-
-## Google OAuth Setup
-
-Create a Google OAuth Web Application credential in Google Cloud Console.
-
-For local development, add this authorized redirect URI:
-
-```text
-http://localhost:4001/oauth/google/callback
-```
-
-For the deployed Render app, add this authorized redirect URI:
-
-```text
-https://fullstack-ecommerce-app-qhpb.onrender.com/oauth/google/callback
-```
-
-The OAuth flow is:
-
-```text
-React login/register page
-→ Express /oauth/google
-→ Google consent screen
-→ Express /oauth/google/callback
-→ React /oauth/callback
-→ authenticated app session
-```
-
-## Stripe Test Mode Setup
-
-This project uses Stripe Checkout and Stripe webhooks.
-
-For local testing:
-
-1. Add a Stripe test secret key to `.env`.
-2. Start the backend.
-3. Start the frontend.
-4. Start the Stripe CLI listener:
-
-```bash
-stripe listen --events checkout.session.completed --forward-to http://localhost:4001/payments/webhook
-```
-
-5. Copy the `whsec_...` signing secret from the Stripe CLI into `.env` as `STRIPE_WEBHOOK_SECRET`.
-6. Restart the backend.
-7. Complete checkout using Stripe's test card:
-
-```text
-4242 4242 4242 4242
-```
-
-Use any future expiration date, any CVC, and any ZIP code.
-
-For deployed testing, create a Stripe webhook endpoint:
-
-```text
-https://fullstack-ecommerce-app-qhpb.onrender.com/payments/webhook
-```
-
-Subscribe it to:
-
-```text
-checkout.session.completed
-```
-
-Then copy the webhook signing secret into Render as `STRIPE_WEBHOOK_SECRET`.
-
-## API Documentation
-
-Swagger UI is available locally at:
-
-```text
-http://localhost:4001/api-docs/
-```
-
-The OpenAPI specification is located at:
-
-```text
-docs/openapi.yaml
-```
-
-Swagger includes documentation for:
-
-- Health
-- Auth
-- Users
-- Products
-- Cart
-- Orders
-
-## API Endpoints
-
-### Health
-
-```text
-GET /health/db
-```
-
-In local development, the API root also returns a health message:
-
-```text
-GET /
-```
-
-In production, Express serves the React client at `/`.
-
-### Auth
-
-```text
-POST /auth/register
-POST /auth/login
-GET  /auth/me
-```
-
-### OAuth
-
-```text
-GET /oauth/google
-GET /oauth/google/callback
-```
-
-### Users
-
-Protected with JWT.
-
-```text
-GET    /users
-GET    /users/:id
-PUT    /users/:id
-DELETE /users/:id
-```
-
-### Products
-
-Product reads are public. Product creation, updates, and deletes are protected with JWT.
-
-```text
-GET    /products
-GET    /products/:id
-POST   /products
-PUT    /products/:id
-DELETE /products/:id
-```
-
-### Cart
-
-Protected with JWT. User-scoped cart routes enforce ownership.
-
-```text
-GET    /cart/:userId
-POST   /cart/:userId/items
-PUT    /cart/:userId/items/:productId
-DELETE /cart/:userId/items/:productId
-DELETE /cart/:userId
-```
-
-### Orders
-
-Protected with JWT. User order-history and user checkout routes enforce ownership.
-
-```text
-POST   /orders/:userId
-GET    /orders
-GET    /orders/:id
-GET    /orders/user/:userId
-PUT    /orders/:id
-DELETE /orders/:id
-```
-
-### Payments
-
-```text
-POST /payments/checkout-session/:userId
-POST /payments/webhook
-```
-
-## Authentication
-
-Protected endpoints require a bearer token.
-
-Example:
-
-```bash
-curl --request GET \
-  --url http://localhost:4001/auth/me \
-  --header "Authorization: Bearer YOUR_TOKEN_HERE"
-```
-
-## Example Register Request
-
-```bash
-curl --request POST \
-  --url http://localhost:4001/auth/register \
-  --header "Content-Type: application/json" \
-  --data "{\"username\":\"demo\",\"email\":\"demo@example.com\",\"password\":\"test123\"}"
-```
-
-## Example Login Request
-
-```bash
-curl --request POST \
-  --url http://localhost:4001/auth/login \
-  --header "Content-Type: application/json" \
-  --data "{\"email\":\"demo@example.com\",\"password\":\"test123\"}"
-```
-
-## Render Deployment Notes
-
-The app is deployed as a single Render Web Service.
-
-Render settings:
-
-```text
-Runtime: Node
-Branch: main
+Runtime: Node (>= 22)
 Build Command: npm install && npm run build
 Start Command: npm start
 ```
 
-Important Render environment variables:
+Trong production:
+- Express serve React static build từ `client/dist/`
+- Wildcard route `/*` → `index.html` (SPA fallback)
+- API endpoints vẫn hoạt động ở same-origin
+- `NODE_ENV=production` → không show health endpoint ở `/`
 
-```env
-NODE_ENV=production
-NODE_VERSION=22
-DATABASE_URL=your-production-database-url
-JWT_SECRET=your-production-jwt-secret
-CLIENT_ORIGIN=https://fullstack-ecommerce-app-qhpb.onrender.com
+---
 
-STRIPE_SECRET_KEY=your-stripe-test-or-live-secret-key
-STRIPE_WEBHOOK_SECRET=your-deployed-stripe-webhook-secret
-STRIPE_CURRENCY=usd
+## 13. Hạn Chế & Công Việc Tương Lai
 
-GOOGLE_CLIENT_ID=your-google-client-id
-GOOGLE_CLIENT_SECRET=your-google-client-secret
-GOOGLE_CALLBACK_URL=https://fullstack-ecommerce-app-qhpb.onrender.com/oauth/google/callback
-```
+| # | Hạn chế | Mức độ |
+|---|---------|--------|
+| 1 | Chưa có **role-based authorization** (admin/user) | ⚠️ Quan trọng |
+| 2 | Stripe chỉ verify ở **test mode** | ℹ️ |
+| 3 | OpenAPI docs chưa bao gồm OAuth + Payment routes | ℹ️ |
+| 4 | Chưa có **product images** trong data model | ℹ️ |
+| 5 | Order details chưa hiển thị chi tiết items trên client | ℹ️ |
+| 6 | Chưa có account-linking rules OAuth ↔ email/password | ⚠️ |
+| 7 | Chưa có **webhook idempotency** (persistent Stripe event IDs) | ⚠️ |
 
-## Security Notes
+---
 
-- Passwords are hashed with bcrypt.
-- JWTs are required for protected routes.
-- Cart routes enforce authenticated user ownership.
-- User order-history routes enforce authenticated user ownership.
-- Stripe Checkout line items are built from the server-side cart.
-- Stripe webhook fulfillment verifies webhook signatures.
-- Real secrets are stored in local `.env` files or Render environment variables, not in source control.
+## 14. Thống Kê Code
 
-## Known Limitations and Future Work
+| Metric | Giá trị |
+|--------|---------|
+| **Tổng files** | ~45 source files |
+| **Backend routes** | 8 route files, ~25 endpoints |
+| **Data models** | 4 models, ~23 DB functions |
+| **React pages** | 11 page components |
+| **React components** | 1 shared component (ProtectedRoute) |
+| **API client functions** | 13 functions |
+| **Test cases** | 30+ smoke tests |
+| **CSS** | ~24KB (App.css) |
+| **Image assets** | 8 files, ~10MB tổng |
+| **DB tables** | 6 tables |
+| **Env variables** | 12 config vars |
 
-- Admin-style routes such as user management, product mutations, and global order management currently use JWT protection but do not yet have role-based authorization.
-- Stripe is verified in test mode for this project.
-- The OpenAPI documentation may need expansion for the newer OAuth and payment routes.
-- Product images and richer product data could be added.
-- Order details could be expanded to show individual purchased items in the client.
-- A production app should add stronger account-linking rules for OAuth users and email/password users with the same email.
-- A production app should add persistent Stripe event/session IDs for stronger webhook idempotency.
-
-## Status
-
-Core project functionality is complete, deployed, and verified.
-
-Verified:
-
-- Local backend smoke tests
-- Local client build and lint
-- Render deployment
-- Google OAuth login
-- Stripe Checkout in test mode
-- Stripe webhook fulfillment
-- Paid order history
+> [!NOTE]
+> Đây là dự án **hoàn chỉnh và đã deployed**, với đầy đủ chức năng e-commerce cơ bản: đăng ký/đăng nhập, duyệt sản phẩm, giỏ hàng, thanh toán Stripe, lịch sử đơn hàng, và Google OAuth.
