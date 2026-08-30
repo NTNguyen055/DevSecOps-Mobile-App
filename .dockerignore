@@ -1,0 +1,14 @@
+node_modules
+client/node_modules
+client/dist
+.git
+.github
+.env
+.env.*
+!.env.example
+test
+docs/*.md
+coverage
+*.md
+.vscode
+.idea
