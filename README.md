@@ -1,590 +1,313 @@
-# 🛒 Tổng Quan Dự Án: Full-Stack E-Commerce App (DevSecOps-App)
+﻿# 🛒 NK-Forge: Storefront — DevSecOps Full-Stack E-Commerce
 
-> **Tên package**: `ecommerce-api` v1.0.0 · **License**: MIT (Nevin Kadlec, 2026)
-> **Brand name**: **NK-Forge: Storefront**
-> **Live Demo**: https://fullstack-ecommerce-app-qhpb.onrender.com
-> **Repo**: https://github.com/NK-Forge/fullstack-ecommerce-app
+[![Node.js](https://img.shields.io/badge/Node.js-22.x-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![Express](https://img.shields.io/badge/Express-5.x-000000?logo=express&logoColor=white)](https://expressjs.com/)
+[![React](https://img.shields.io/badge/React-19.x-61DAFB?logo=react&logoColor=black)](https://react.dev/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+Dự án ứng dụng thương mại điện tử **Full-Stack (Monorepo)** được thiết kế và chuẩn hóa cho quy trình **DevSecOps**, tích hợp sẵn **Containerization (Docker & Docker Compose)**, xác thực bảo mật bằng **JWT & Bcrypt**, cơ sở dữ liệu **PostgreSQL** với cơ chế tự động nạp cấu trúc (schema migration) và seed dữ liệu.
 
 ---
 
-## 1. Tổng Quan Kiến Trúc
+## 📌 Mục lục
 
-Đây là một ứng dụng **E-Commerce full-stack** với kiến trúc **monorepo** gồm:
+1. [Kiến Trúc & Tech Stack](#-kiến-trúc--tech-stack)
+2. [Cấu Trúc Thư Mục](#-cấu-trúc-thư-mục)
+3. [Tính Năng Chính](#-tính-năng-chính)
+4. [Cơ Sở Dữ Liệu (Database Schema)](#-cơ-sở-dữ-liệu-database-schema)
+5. [Hướng Dẫn Cài Đặt & Chạy Dự Án](#-hướng-dẫn-cài-đặt--chạy-dự-án)
+   - [Cách 1: Chạy bằng Docker Compose (Khuyên Dùng)](#-cách-1-chạy-toàn-bộ-bằng-docker-compose-chuẩn-devsecops)
+   - [Cách 2: Chạy Local Development](#-cách-2-chạy-local-development)
+6. [Tài Liệu API & Swagger UI](#-tài-liệu-api--swagger-ui)
+7. [Kiểm Thử Tự Động (Smoke Tests)](#-kiểm-thử-tự-động-smoke-tests)
+8. [DevSecOps & Tiêu Chuẩn Bảo Mật](#-devsecops--tiêu-chuẩn-bảo-mật)
+
+---
+
+## 🏗️ Kiến Trúc & Tech Stack
 
 ```mermaid
 graph TB
-    subgraph "Client - React + Vite"
+    subgraph "Client Layer (Frontend)"
         A["React 19 SPA"] --> B["React Router v7"]
-        A --> C["Auth Context + localStorage"]
-        A --> D["API Client (fetch)"]
+        A --> C["Auth Context (JWT in LocalStorage)"]
+        A --> D["API Client (Fetch)"]
     end
     
-    subgraph "Server - Node.js + Express 5"
-        E["Express App"] --> F["Routes (8 routers)"]
-        F --> G["Models (4 data models)"]
-        G --> H["PostgreSQL via pg Pool"]
-        E --> I["JWT Auth Middleware"]
-        E --> J["Swagger UI"]
+    subgraph "Server Layer (Backend - Docker)"
+        E["Express 5 Server"] --> F["Security Middleware (JWT Auth, CORS)"]
+        F --> G["REST API Routes"]
+        G --> H["Data Models (User, Product, Cart, Order)"]
+        H --> I["PostgreSQL Pool (pg)"]
+        E --> J["Swagger UI (/api-docs)"]
     end
     
-    subgraph "External Services"
-        K["Neon PostgreSQL"]
-        L["Stripe Checkout + Webhooks"]
-        M["Google OAuth 2.0"]
-        N["Render (Deployment)"]
+    subgraph "Data Layer (PostgreSQL Container)"
+        K[("PostgreSQL 16 DB")]
     end
     
-    D --> E
-    H --> K
-    E --> L
-    E --> M
-    E --> N
+    D -->|HTTP Request| E
+    I -->|TCP Connection| K
 ```
 
-| Layer | Stack | Chi tiết |
-|-------|-------|----------|
-| **Frontend** | React 19, Vite 8, React Router 7 | SPA, CSS thuần, AuthContext, ProtectedRoute |
-| **Backend** | Node.js ≥22, Express 5 | REST API, CommonJS modules |
-| **Database** | PostgreSQL (Neon Postgres) | 6 bảng, SSL connection |
-| **Auth** | JWT + bcrypt + Google OAuth 2.0 | Token 1h, localStorage session |
-| **Payment** | Stripe Checkout + Webhooks | Test mode, signature verification |
-| **Testing** | Mocha + Chai + Supertest | 583 dòng smoke test |
-| **Deployment** | Render | Express serve static React build |
-| **Docs** | Swagger UI + OpenAPI YAML | Tự host tại `/api-docs` |
+### Chi tiết Công nghệ:
+- **Frontend**: React 19, Vite, React Router v7, Modern Vanilla CSS (Glassmorphism & Responsive UI).
+- **Backend**: Node.js (>=22), Express 5, `pg` (PostgreSQL client pool), `jsonwebtoken`, `bcrypt`.
+- **Database**: PostgreSQL 16 Alpine.
+- **Containerization**: Multi-stage Dockerfile (non-root security), Docker Compose orchestration.
+- **API Documentation**: OpenAPI 3.0 YAML, Swagger UI.
+- **Testing**: Mocha, Chai, Supertest (hơn 30 smoke test cases).
 
 ---
 
-## 2. Cấu Trúc Thư Mục
+## 📁 Cấu Trúc Thư Mục
 
 ```text
-DevSecOps-App/
-├── app.js                        # Express app setup, middleware, routes
-├── server.js                     # HTTP server entry point (port 4001)
-├── package.json                  # Backend dependencies & scripts
-├── .env.example                  # 12 biến môi trường mẫu
-├── .gitignore                    # 77 rules (node_modules, .env, dist, etc.)
-├── LICENSE                       # MIT License
-├── README.md                     # 553 dòng documentation
-│
-├── client/                       # ── FRONTEND (React + Vite) ──
-│   ├── index.html                # HTML entry, title: "NK-Forge:Storefront"
-│   ├── package.json              # React 19, Vite 8, react-router-dom 7
-│   ├── vite.config.js            # Plugin: @vitejs/plugin-react
-│   ├── eslint.config.js          # ESLint config
-│   ├── .env.example              # VITE_API_BASE_URL
-│   ├── public/                   # Static assets (favicon)
-│   └── src/
-│       ├── main.jsx              # ReactDOM.createRoot, BrowserRouter, AuthProvider
-│       ├── App.jsx               # Layout + Routes (12 routes)
-│       ├── App.css               # 24KB CSS toàn bộ styling
-│       ├── index.css             # CSS reset cơ bản
-│       ├── api/
-│       │   └── apiClient.js      # 13 API functions (fetch-based)
-│       ├── auth/
-│       │   ├── authContext.js     # React.createContext
-│       │   ├── AuthProvider.jsx   # Token/user state, login/logout/OAuth
-│       │   └── useAuth.js        # Custom hook
-│       ├── components/
-│       │   └── ProtectedRoute.jsx # Redirect nếu chưa auth
-│       ├── pages/                 # 11 page components
-│       │   ├── HomePage.jsx
-│       │   ├── ProductsPage.jsx   # Catalog + product cards
-│       │   ├── ProductDetailsPage.jsx
-│       │   ├── CartPage.jsx       # 9.2KB - full cart management
-│       │   ├── CheckoutPage.jsx   # Stripe checkout session
-│       │   ├── CheckoutSuccessPage.jsx
-│       │   ├── OrdersPage.jsx     # Order history
-│       │   ├── LoginPage.jsx      # Email/password + Google OAuth
-│       │   ├── RegisterPage.jsx   # Email/password registration
-│       │   ├── OAuthCallbackPage.jsx # Google OAuth callback handler
-│       │   └── NotFoundPage.jsx
-│       └── assets/                # 8 files (images ~1.8-2.1MB each)
-│           ├── forge-storefront-hero.png
-│           ├── non-home-bg.png
-│           ├── forge_notebook.png
-│           ├── forge_pen.png
-│           ├── smoke_test_product.png
-│           ├── hero.png
-│           ├── react.svg
-│           └── vite.svg
-│
-├── db/                           # ── DATABASE ──
-│   ├── index.js                  # pg Pool connection (SSL, DATABASE_URL)
-│   └── schema.sql                # 6 tables DDL
-│
-├── middleware/                   # ── MIDDLEWARE ──
-│   └── authMiddleware.js         # requireAuth (JWT verify) + requireSameUser
-│
-├── models/                       # ── DATA MODELS ──
-│   ├── userModel.js              # CRUD users (6 functions)
-│   ├── productModel.js           # CRUD products (5 functions)
-│   ├── cartModel.js              # Cart operations (6 functions)
-│   └── orderModel.js             # Order operations (6 functions, transaction support)
-│
-├── routes/                       # ── API ROUTES ──
-│   ├── auth.routes.js            # POST /register, POST /login, GET /me
-│   ├── oauth.routes.js           # GET /google, GET /google/callback
-│   ├── products.routes.js        # CRUD /products
-│   ├── users.routes.js           # CRUD /users (protected)
-│   ├── cart.routes.js            # Cart CRUD /cart/:userId (ownership enforced)
-│   ├── orders.routes.js          # Orders CRUD /orders (ownership enforced)
-│   ├── payments.routes.js        # POST /checkout-session/:userId
-│   └── paymentWebhooks.routes.js # POST /webhook (Stripe signature verify)
-│
-├── scripts/                      # ── SCRIPTS ──
-│   └── apply-schema.js           # Đọc schema.sql và chạy vào DB
-│
-├── test/                         # ── TESTING ──
-│   └── smoke.test.js             # 30+ test cases, 583 dòng
-│
-└── docs/                         # ── DOCUMENTATION ──
-    ├── api-plan.md               # Endpoint plan table
-    └── openapi.yaml              # 12.9KB OpenAPI 3.0 spec
+.
+├── client/                     # Mã nguồn Frontend (React + Vite)
+│   ├── src/
+│   │   ├── api/                # API Client module
+│   │   ├── auth/               # AuthProvider, useAuth hook, context
+│   │   ├── components/         # ProtectedRoute, UI components
+│   │   ├── pages/              # Pages: Home, Products, Cart, Orders, Login, Register...
+│   │   ├── App.jsx             # Router layout & navigation
+│   │   └── App.css             # Design system & responsive styles
+│   ├── index.html              # HTML entrypoint
+│   └── package.json            # Frontend dependencies
+├── db/
+│   ├── index.js                # PostgreSQL connection pool & SSL config
+│   └── schema.sql              # 6 DDL tables & Seed data
+├── docs/
+│   ├── openapi.yaml            # OpenAPI 3.0 Specification
+│   ├── api-plan.md             # Kế hoạch thiết kế API
+│   └── devsecops-roadmap.md    # Lộ trình chuẩn hóa DevSecOps
+├── middleware/
+│   └── authMiddleware.js       # JWT validation & user ownership check
+├── models/                     # Data access layer (User, Product, Cart, Order)
+├── routes/                     # Express REST API routes
+├── scripts/
+│   └── apply-schema.js         # Script áp dụng schema vào database
+├── test/
+│   └── smoke.test.js           # Bộ kiểm thử tự động toàn diện
+├── .dockerignore               # Danh sách loại trừ khi build Docker image
+├── .env.example                # Biến môi trường mẫu
+├── docker-compose.yml          # Docker Compose orchestration (App + DB)
+├── Dockerfile                  # Multi-stage Dockerfile tối ưu bảo mật
+├── package.json                # Backend dependencies & npm scripts
+└── README.md                   # Tài liệu dự án
 ```
 
 ---
 
-## 3. Database Schema (6 Bảng)
+## ✨ Tính Năng Chính
+
+- **Quản lý tài khoản**: Đăng ký, đăng nhập tài khoản bằng Email & Mật khẩu mã hóa Bcrypt; Cấp phát JWT token (1h).
+- **Catalog sản phẩm**: Duyệt danh sách sản phẩm, xem chi tiết, hiển thị giá và số lượng tồn kho tức thời.
+- **Giỏ hàng (Cart)**: Thêm sản phẩm, tăng/giảm số lượng, xóa item, làm sạch giỏ hàng với cơ chế kiểm soát quyền sở hữu (`requireSameUser`).
+- **Đơn hàng (Orders)**: Chuyển đổi giỏ hàng thành đơn hàng với **Database Transaction** (BEGIN / COMMIT / ROLLBACK) đảm bảo trừ số lượng tồn kho an toàn và lưu snapshot giá tại thời điểm mua.
+- **Tài liệu trực quan**: Tích hợp Swagger UI tương tác trực tiếp với API tại `/api-docs`.
+- **Đóng gói container hoàn chỉnh**: Chạy toàn bộ ứng dụng chỉ với một lệnh duy nhất.
+
+---
+
+## 🗄️ Cơ Sở Dữ Liệu (Database Schema)
+
+Dự án gồm **6 bảng quan hệ**:
 
 ```mermaid
 erDiagram
+    users ||--o| carts : "sở hữu 1"
+    users ||--o{ orders : "đặt nhiều"
+    carts ||--o{ cart_items : "chứa"
+    products ||--o{ cart_items : "trong giỏ"
+    orders ||--o{ order_items : "chứa"
+    products ||--o{ order_items : "được mua"
+
     users {
-        SERIAL id PK
-        VARCHAR username UK
-        VARCHAR email UK
-        TEXT password_hash
-        TIMESTAMP created_at
-        TIMESTAMP updated_at
+        int id PK
+        string username UK
+        string email UK
+        string password_hash
+        timestamp created_at
     }
     products {
-        SERIAL id PK
-        VARCHAR name
-        TEXT description
-        NUMERIC price
-        INTEGER inventory_quantity
-        TIMESTAMP created_at
-        TIMESTAMP updated_at
+        int id PK
+        string name
+        text description
+        numeric price
+        int inventory_quantity
+        timestamp created_at
     }
     carts {
-        SERIAL id PK
-        INTEGER user_id FK,UK
-        TIMESTAMP created_at
-        TIMESTAMP updated_at
+        int id PK
+        int user_id FK,UK
     }
     cart_items {
-        SERIAL id PK
-        INTEGER cart_id FK
-        INTEGER product_id FK
-        INTEGER quantity
-        TIMESTAMP created_at
-        TIMESTAMP updated_at
+        int id PK
+        int cart_id FK
+        int product_id FK
+        int quantity
     }
     orders {
-        SERIAL id PK
-        INTEGER user_id FK
-        VARCHAR status
-        NUMERIC total
-        TIMESTAMP created_at
-        TIMESTAMP updated_at
+        int id PK
+        int user_id FK
+        string status
+        numeric total
+        timestamp created_at
     }
     order_items {
-        SERIAL id PK
-        INTEGER order_id FK
-        INTEGER product_id FK
-        INTEGER quantity
-        NUMERIC price_at_purchase
-        TIMESTAMP created_at
+        int id PK
+        int order_id FK
+        int product_id FK
+        int quantity
+        numeric price_at_purchase
     }
-    
-    users ||--o| carts : "has one"
-    users ||--o{ orders : "has many"
-    carts ||--o{ cart_items : "contains"
-    products ||--o{ cart_items : "in cart"
-    orders ||--o{ order_items : "contains"
-    products ||--o{ order_items : "purchased"
-```
-
-> [!IMPORTANT]
-> - `carts.user_id` là **UNIQUE** → mỗi user chỉ có 1 cart
-> - `cart_items(cart_id, product_id)` là **UNIQUE** → tránh trùng sản phẩm trong cart
-> - `order_items.price_at_purchase` → snapshot giá tại thời điểm mua
-> - Tất cả FK đều `ON DELETE CASCADE`
-
----
-
-## 4. API Endpoints (Tổng cộng ~25 endpoints)
-
-### 4.1 Health
-| Method | Endpoint | Auth | Mô tả |
-|--------|----------|------|--------|
-| `GET` | `/` | ❌ | Health check (dev only, production serve React) |
-| `GET` | `/health/db` | ❌ | Database health check |
-
-### 4.2 Auth
-| Method | Endpoint | Auth | Mô tả |
-|--------|----------|------|--------|
-| `POST` | `/auth/register` | ❌ | Đăng ký user (email → username) |
-| `POST` | `/auth/login` | ❌ | Đăng nhập, trả JWT (1h) |
-| `GET` | `/auth/me` | 🔒 JWT | Thông tin user hiện tại |
-
-### 4.3 OAuth
-| Method | Endpoint | Auth | Mô tả |
-|--------|----------|------|--------|
-| `GET` | `/oauth/google` | ❌ | Redirect đến Google consent |
-| `GET` | `/oauth/google/callback` | ❌ | Callback xử lý Google OAuth |
-
-### 4.4 Users (Protected)
-| Method | Endpoint | Auth | Mô tả |
-|--------|----------|------|--------|
-| `GET` | `/users` | 🔒 JWT | Lấy tất cả users |
-| `GET` | `/users/:id` | 🔒 JWT | Lấy user theo ID |
-| `PUT` | `/users/:id` | 🔒 JWT | Cập nhật user |
-| `DELETE` | `/users/:id` | 🔒 JWT | Xóa user |
-
-### 4.5 Products
-| Method | Endpoint | Auth | Mô tả |
-|--------|----------|------|--------|
-| `GET` | `/products` | ❌ | Lấy tất cả sản phẩm |
-| `GET` | `/products/:id` | ❌ | Lấy sản phẩm theo ID |
-| `POST` | `/products` | 🔒 JWT | Tạo sản phẩm mới |
-| `PUT` | `/products/:id` | 🔒 JWT | Cập nhật sản phẩm |
-| `DELETE` | `/products/:id` | 🔒 JWT | Xóa sản phẩm |
-
-### 4.6 Cart (Protected + Ownership)
-| Method | Endpoint | Auth | Mô tả |
-|--------|----------|------|--------|
-| `GET` | `/cart/:userId` | 🔒 JWT + 👤 Owner | Lấy giỏ hàng |
-| `POST` | `/cart/:userId/items` | 🔒 JWT + 👤 Owner | Thêm sản phẩm vào giỏ |
-| `PUT` | `/cart/:userId/items/:productId` | 🔒 JWT + 👤 Owner | Cập nhật số lượng |
-| `DELETE` | `/cart/:userId/items/:productId` | 🔒 JWT + 👤 Owner | Xóa sản phẩm khỏi giỏ |
-| `DELETE` | `/cart/:userId` | 🔒 JWT + 👤 Owner | Xóa toàn bộ giỏ hàng |
-
-### 4.7 Orders (Protected + Partial Ownership)
-| Method | Endpoint | Auth | Mô tả |
-|--------|----------|------|--------|
-| `POST` | `/orders/:userId` | 🔒 JWT + 👤 Owner | Tạo order từ cart (transaction) |
-| `GET` | `/orders` | 🔒 JWT | Lấy tất cả orders |
-| `GET` | `/orders/:id` | 🔒 JWT | Lấy order theo ID |
-| `GET` | `/orders/user/:userId` | 🔒 JWT + 👤 Owner | Lấy order history của user |
-| `PUT` | `/orders/:id` | 🔒 JWT | Cập nhật status |
-| `DELETE` | `/orders/:id` | 🔒 JWT | Xóa order |
-
-### 4.8 Payments (Stripe)
-| Method | Endpoint | Auth | Mô tả |
-|--------|----------|------|--------|
-| `POST` | `/payments/checkout-session/:userId` | 🔒 JWT + 👤 Owner | Tạo Stripe Checkout Session |
-| `POST` | `/payments/webhook` | 🔐 Stripe Signature | Stripe webhook fulfillment |
-
----
-
-## 5. Luồng Hoạt Động Chính
-
-### 5.1 Luồng Đăng Ký / Đăng Nhập
-
-```mermaid
-sequenceDiagram
-    participant U as User/Browser
-    participant R as React App
-    participant E as Express API
-    participant DB as PostgreSQL
-    
-    U->>R: Nhập email + password
-    R->>E: POST /auth/register
-    E->>E: bcrypt.hash(password, 10)
-    E->>DB: INSERT INTO users
-    DB-->>E: user record
-    E-->>R: 201 + user info
-    
-    U->>R: Đăng nhập
-    R->>E: POST /auth/login
-    E->>DB: SELECT user WHERE email
-    E->>E: bcrypt.compare()
-    E->>E: jwt.sign({id, username, email}, secret, 1h)
-    E-->>R: 200 + token + user
-    R->>R: localStorage.setItem(token, user)
-```
-
-### 5.2 Luồng Google OAuth
-
-```text
-React Login Page → Express /oauth/google → Google Consent Screen
-→ Express /oauth/google/callback (verify token, find/create user)
-→ Redirect to React /oauth/callback#token=...
-→ React reads hash fragment, calls /auth/me, stores session
-```
-
-### 5.3 Luồng Mua Hàng & Thanh Toán
-
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant R as React
-    participant E as Express
-    participant S as Stripe
-    participant DB as PostgreSQL
-    
-    U->>R: Add to cart
-    R->>E: POST /cart/:userId/items (JWT)
-    E->>DB: INSERT/UPSERT cart_items
-    
-    U->>R: Checkout
-    R->>E: POST /payments/checkout-session/:userId (JWT)
-    E->>DB: Get cart items + product prices
-    E->>S: stripe.checkout.sessions.create()
-    S-->>E: session.url
-    E-->>R: redirect URL
-    R->>S: Redirect to Stripe hosted page
-    
-    U->>S: Pay (4242 4242 4242 4242)
-    S->>E: POST /payments/webhook (signature)
-    E->>E: Verify stripe signature
-    E->>DB: BEGIN transaction
-    E->>DB: Create order + order_items
-    E->>DB: Deduct inventory
-    E->>DB: Clear cart
-    E->>DB: COMMIT
-    E->>DB: UPDATE order status = 'paid'
-    
-    S-->>R: Redirect to /checkout/success
 ```
 
 ---
 
-## 6. Authentication & Security
+## 🚀 Hướng Dẫn Cài Đặt & Chạy Dự Án
 
-### Middleware Chain
+### 1. Cấu hình biến môi trường (`.env`)
 
-```javascript
-// requireAuth: verify JWT → req.user = decoded payload
-// requireSameUser('userId'): req.params.userId === req.user.id
-```
-
-| Cơ chế | Chi tiết |
-|--------|---------|
-| **Password hashing** | bcrypt, salt rounds = 10 |
-| **JWT** | 1h expiry, payload: `{id, username, email}` |
-| **Ownership enforcement** | `requireSameUser` middleware trên cart + order-history + checkout |
-| **OAuth state** | JWT-signed state param, 10min expiry, nonce |
-| **Stripe webhook** | `constructEvent()` signature verification |
-| **CORS** | Origin: `CLIENT_ORIGIN` env var |
-| **Session persistence** | Client-side via `localStorage` |
-
-> [!WARNING]
-> **Hạn chế bảo mật đã biết:**
-> - Chưa có **role-based authorization** (admin vs user)
-> - Routes admin-style (GET /users, DELETE /products, etc.) chỉ check JWT, không check role
-> - Chưa có account-linking rules cho OAuth + email/password cùng email
-> - Chưa có persistent Stripe event IDs cho webhook idempotency
-
----
-
-## 7. Frontend (React) Chi Tiết
-
-### 7.1 Routes
-
-| Path | Component | Protected? | Mô tả |
-|------|-----------|-----------|--------|
-| `/` | `HomePage` | ❌ | Hero landing page |
-| `/products` | `ProductsPage` | ❌ | Catalog sản phẩm |
-| `/products/:productId` | `ProductDetailsPage` | ❌ | Chi tiết sản phẩm |
-| `/cart` | `CartPage` | 🔒 | Giỏ hàng |
-| `/checkout` | `CheckoutPage` | 🔒 | Thanh toán |
-| `/checkout/success` | `CheckoutSuccessPage` | 🔒 | Thanh toán thành công |
-| `/orders` | `OrdersPage` | 🔒 | Lịch sử đơn hàng |
-| `/login` | `LoginPage` | ❌ | Đăng nhập |
-| `/register` | `RegisterPage` | ❌ | Đăng ký |
-| `/oauth/callback` | `OAuthCallbackPage` | ❌ | OAuth callback handler |
-| `*` | `NotFoundPage` | ❌ | 404 |
-
-### 7.2 Auth System (Client)
-
-```text
-AuthProvider (Context)
-├── State: token, user (initialized from localStorage)
-├── login(credentials) → POST /auth/login → store session
-├── completeOAuthLogin(oauthToken) → GET /auth/me → store session
-├── refreshCurrentUser() → GET /auth/me → update user
-└── logout() → clear localStorage + state
-```
-
-### 7.3 API Client
-
-File [apiClient.js](file:///d:/Projects/DevSecOps-App/client/src/api/apiClient.js) — 13 exported functions:
-
-| Function | Endpoint | Auth |
-|----------|----------|------|
-| `getProducts()` | `GET /products` | ❌ |
-| `getProduct(id)` | `GET /products/:id` | ❌ |
-| `registerUser(data)` | `POST /auth/register` | ❌ |
-| `loginUser(creds)` | `POST /auth/login` | ❌ |
-| `getCurrentUser(token)` | `GET /auth/me` | 🔒 |
-| `getGoogleOAuthUrl()` | Returns URL string | — |
-| `getCart(userId, token)` | `GET /cart/:userId` | 🔒 |
-| `addCartItem(...)` | `POST /cart/:userId/items` | 🔒 |
-| `updateCartItem(...)` | `PUT /cart/:userId/items/:productId` | 🔒 |
-| `removeCartItem(...)` | `DELETE /cart/:userId/items/:productId` | 🔒 |
-| `clearCart(...)` | `DELETE /cart/:userId` | 🔒 |
-| `createOrder(...)` | `POST /orders/:userId` | 🔒 |
-| `createCheckoutSession(...)` | `POST /payments/checkout-session/:userId` | 🔒 |
-| `getUserOrders(...)` | `GET /orders/user/:userId` | 🔒 |
-
-### 7.4 UI/UX
-
-- Background images khác nhau cho Home vs non-Home pages
-- Conditional navigation: Home, Products (public) | Cart, Orders (auth) | Login, Register (guest)
-- Auth status bar hiển thị email khi đã đăng nhập
-- Brand: **NK** badge + "Forge: Storefront"
-
----
-
-## 8. Backend Data Models
-
-### [userModel.js](file:///d:/Projects/DevSecOps-App/models/userModel.js)
-`createUser` · `findUserByEmail` · `getAllUsers` · `getUserById` · `updateUser` · `deleteUser`
-
-### [productModel.js](file:///d:/Projects/DevSecOps-App/models/productModel.js)
-`getAllProducts` · `getProductById` · `createProduct` · `updateProduct` · `deleteProduct`
-
-### [cartModel.js](file:///d:/Projects/DevSecOps-App/models/cartModel.js)
-`getOrCreateCartByUserId` · `getCartByUserId` (với JOIN products) · `addItemToCart` (UPSERT) · `updateCartItem` · `removeCartItem` · `clearCart`
-
-### [orderModel.js](file:///d:/Projects/DevSecOps-App/models/orderModel.js)
-`getOrderById` (với JOIN order_items + products) · `getAllOrders` · `getOrdersByUserId` · `createOrderFromCart` (**transaction**: check inventory → create order → insert items → deduct inventory → clear cart) · `updateOrderStatus` · `deleteOrder`
-
-> [!NOTE]
-> `createOrderFromCart` là function phức tạp nhất — sử dụng **database transaction** với `BEGIN/COMMIT/ROLLBACK` để đảm bảo tính toàn vẹn dữ liệu khi tạo order.
-
----
-
-## 9. NPM Scripts & Dependencies
-
-### Backend Scripts
-| Script | Command | Mô tả |
-|--------|---------|--------|
-| `npm start` | `node server.js` | Production start |
-| `npm run dev` | `nodemon server.js` | Development (hot reload) |
-| `npm test` | `mocha "test/**/*.test.js"` | Smoke tests |
-| `npm run db:schema` | `node scripts/apply-schema.js` | Apply DB schema |
-| `npm run build` | Client CI + build + prune | Production build |
-
-### Backend Dependencies (9)
-| Package | Version | Mục đích |
-|---------|---------|---------|
-| express | ^5.2.1 | Web framework (**Express 5**) |
-| pg | ^8.20.0 | PostgreSQL client |
-| bcrypt | ^6.0.0 | Password hashing |
-| jsonwebtoken | ^9.0.3 | JWT auth |
-| cors | ^2.8.6 | CORS headers |
-| dotenv | ^17.4.2 | Env variables |
-| stripe | ^22.1.1 | Stripe payments |
-| google-auth-library | ^10.6.2 | Google OAuth |
-| swagger-ui-express | ^5.0.1 | API docs UI |
-| yamljs | ^0.3.0 | Parse OpenAPI YAML |
-
-### Frontend Dependencies (3)
-| Package | Version |
-|---------|---------|
-| react | ^19.2.6 |
-| react-dom | ^19.2.6 |
-| react-router-dom | ^7.15.0 |
-
----
-
-## 10. Environment Variables (12)
+Tạo file `.env` tại thư mục gốc của dự án:
 
 ```env
-# Server
 PORT=4001
 NODE_ENV=development
-DATABASE_URL=postgresql://...?sslmode=require
-JWT_SECRET=your-secret
-
-# Stripe
-STRIPE_SECRET_KEY=sk_test_...
-STRIPE_WEBHOOK_SECRET=whsec_...
-STRIPE_CURRENCY=usd
-
-# Client
 CLIENT_ORIGIN=http://localhost:5173
+JWT_SECRET=316b0feebc21414d336554a1873b842ede93bed2f05b7d913bf90164bc46ef88
 
-# Google OAuth
-GOOGLE_CLIENT_ID=...
-GOOGLE_CLIENT_SECRET=...
-GOOGLE_CALLBACK_URL=http://localhost:4001/oauth/google/callback
+# Thông tin tài khoản PostgreSQL
+POSTGRES_USER=ntnguyen123
+POSTGRES_PASSWORD=Banhmi_4o
+POSTGRES_DB=ecommerce_db
 
-# Frontend (.env riêng trong client/)
+# Chuỗi kết nối khi chạy ngoài máy thật (Local Dev)
+DATABASE_URL=postgresql://ntnguyen123:Banhmi_4o@localhost:5432/ecommerce_db
+```
+
+Tạo file `client/.env` tại thư mục `client/`:
+```env
 VITE_API_BASE_URL=http://localhost:4001
 ```
 
 ---
 
-## 11. Testing
+### 🐳 Cách 1: Chạy toàn bộ bằng Docker Compose (Chuẩn DevSecOps)
 
-File [smoke.test.js](file:///d:/Projects/DevSecOps-App/test/smoke.test.js) — **30+ test cases** covering:
+> **Yêu cầu:** Máy tính đã cài đặt và khởi động **Docker Desktop**.
 
-| Category | Tests |
-|----------|-------|
-| Health | API running, DB connection |
-| Auth | Register, login, JWT verify, reject without token |
-| OAuth | Config error handling, callback validation |
-| Products | Create, read all, read one, update, delete |
-| Cart | Add item, get cart, update item, ownership rejection |
-| Payments | Stripe webhook config, signature validation, valid signed event |
-| Checkout | Auth required, ownership check, config error |
-| Orders | Create from cart, get all, get by ID, get by user, update status |
-| Users | Get all, get by ID, update |
-| Cleanup | Delete test order, product, users |
+1. Khởi chạy toàn bộ hệ thống (App + Database PostgreSQL):
+   ```bash
+   docker compose up --build -d
+   ```
 
-> [!TIP]
-> Tests chạy trực tiếp với database thật (Neon PostgreSQL) — cần `DATABASE_URL` và `JWT_SECRET` trong `.env`.
+2. Kiểm tra trạng thái các container:
+   ```bash
+   docker compose ps
+   ```
+   *Cả 2 containers `devsecops-postgres` và `devsecops-ecommerce-app` đều ở trạng thái `healthy`.*
+
+3. Truy cập ứng dụng:
+   - **Giao diện Web Khách hàng (React + API):** [http://localhost:4001](http://localhost:4001)
+   - **Swagger API Docs:** [http://localhost:4001/api-docs](http://localhost:4001/api-docs)
+   - **Database Health Check:** [http://localhost:4001/health/db](http://localhost:4001/health/db)
+
+4. Dừng hệ thống:
+   ```bash
+   docker compose down
+   # Nếu muốn xóa sạch volume database cũ:
+   docker compose down -v
+   ```
 
 ---
 
-## 12. Deployment (Render)
+### 💻 Cách 2: Chạy Local Development
 
-```text
-Runtime: Node (>= 22)
-Build Command: npm install && npm run build
-Start Command: npm start
+1. Khởi động riêng container PostgreSQL:
+   ```bash
+   docker compose up -d postgres_db
+   ```
+
+2. Cài đặt dependencies:
+   ```bash
+   npm install
+   npm install --prefix client
+   ```
+
+3. Nạp database schema & dữ liệu mẫu:
+   ```bash
+   npm run db:schema
+   ```
+
+4. Khởi động ứng dụng (mở 2 terminal):
+   - **Terminal 1 (Backend):**
+     ```bash
+     npm run dev
+     # Backend chạy tại: http://localhost:4001
+     ```
+   - **Terminal 2 (Frontend):**
+     ```bash
+     cd client
+     npm run dev
+     # Frontend chạy tại: http://localhost:5173
+     ```
+
+---
+
+## 📖 Tài Liệu API & Swagger UI
+
+Toàn bộ tài liệu chi tiết các Endpoint có thể tra cứu và test trực tiếp tại:  
+👉 **[http://localhost:4001/api-docs](http://localhost:4001/api-docs)**
+
+### Tóm tắt các Endpoint chính:
+
+| Nhóm | Method | Endpoint | Yêu cầu Auth | Mô tả |
+|:---|:---|:---|:---:|:---|
+| **Health** | `GET` | `/health/db` | ❌ | Kiểm tra kết nối cơ sở dữ liệu |
+| **Auth** | `POST` | `/auth/register` | ❌ | Đăng ký tài khoản người dùng mới |
+| | `POST` | `/auth/login` | ❌ | Đăng nhập & nhận Bearer JWT Token |
+| | `GET` | `/auth/me` | 🔒 JWT | Lấy thông tin user hiện tại |
+| **Products** | `GET` | `/products` | ❌ | Lấy danh sách toàn bộ sản phẩm |
+| | `GET` | `/products/:id` | ❌ | Lấy thông tin chi tiết 1 sản phẩm |
+| **Cart** | `GET` | `/cart/:userId` | 🔒 JWT + 👤 Owner | Lấy thông tin giỏ hàng của user |
+| | `POST` | `/cart/:userId/items` | 🔒 JWT + 👤 Owner | Thêm sản phẩm vào giỏ hàng |
+| | `PUT` | `/cart/:userId/items/:productId` | 🔒 JWT + 👤 Owner | Cập nhật số lượng sản phẩm |
+| | `DELETE` | `/cart/:userId/items/:productId` | 🔒 JWT + 👤 Owner | Xóa 1 item khỏi giỏ hàng |
+| | `DELETE` | `/cart/:userId` | 🔒 JWT + 👤 Owner | Làm trống giỏ hàng |
+| **Orders** | `POST` | `/orders/:userId` | 🔒 JWT + 👤 Owner | Tạo đơn hàng từ giỏ hàng (Transaction) |
+| | `GET` | `/orders/user/:userId` | 🔒 JWT + 👤 Owner | Xem lịch sử đơn hàng của user |
+| | `GET` | `/orders/:id` | 🔒 JWT | Xem chi tiết 1 đơn hàng |
+
+---
+
+## 🧪 Kiểm Thử Tự Động (Smoke Tests)
+
+Dự án tích hợp bộ kiểm thử tự động với Mocha, Chai và Supertest kiểm tra toàn bộ luồng Auth, CRUD sản phẩm, giỏ hàng, đặt hàng và bảo mật phân quyền:
+
+```bash
+npm test
 ```
 
-Trong production:
-- Express serve React static build từ `client/dist/`
-- Wildcard route `/*` → `index.html` (SPA fallback)
-- API endpoints vẫn hoạt động ở same-origin
-- `NODE_ENV=production` → không show health endpoint ở `/`
+---
+
+## 🛡️ DevSecOps & Tiêu Chuẩn Bảo Mật
+
+- **Mã hóa mật khẩu**: Sử dụng `bcrypt` với 10 vòng salt rounds.
+- **Xác thực & Ủy quyền**: Sử dụng JSON Web Token (JWT) có thời hạn (1h); Middleware `requireSameUser` ngăn chặn truy cập trái phép vào giỏ hàng / đơn hàng của người khác (IDOR protection).
+- **Toàn vẹn dữ liệu (ACID)**: Sử dụng Database Transactions (`BEGIN`, `COMMIT`, `ROLLBACK`) khi tạo đơn hàng nhằm tránh tình trạng race condition và sai lệch tồn kho.
+- **Container Security**: 
+  - Dockerfile sử dụng `node:22-alpine` đa tầng (Multi-stage build) giúp giảm kích thước image (<200MB).
+  - Khởi chạy tiến trình dưới tài khoản người dùng không đặc quyền (`ntnuser`), không chạy quyền `root`.
+  - Tích hợp `HEALTHCHECK` định kỳ.
+- **Secret Management**: Tất cả secrets nhạy cảm được quản lý qua biến môi trường (`.env`), không hardcode trong Dockerfile hay source code.
+- **Roadmap DevSecOps hoàn chỉnh**: Xem chi tiết kế hoạch triển khai CI/CD, SonarQube, Gitleaks, Trivy, AWS & Monitoring tại [docs/devsecops-roadmap.md](docs/devsecops-roadmap.md).
 
 ---
 
-## 13. Hạn Chế & Công Việc Tương Lai
+## 📄 Giấy Phép (License)
 
-| # | Hạn chế | Mức độ |
-|---|---------|--------|
-| 1 | Chưa có **role-based authorization** (admin/user) | ⚠️ Quan trọng |
-| 2 | Stripe chỉ verify ở **test mode** | ℹ️ |
-| 3 | OpenAPI docs chưa bao gồm OAuth + Payment routes | ℹ️ |
-| 4 | Chưa có **product images** trong data model | ℹ️ |
-| 5 | Order details chưa hiển thị chi tiết items trên client | ℹ️ |
-| 6 | Chưa có account-linking rules OAuth ↔ email/password | ⚠️ |
-| 7 | Chưa có **webhook idempotency** (persistent Stripe event IDs) | ⚠️ |
-
----
-
-## 14. Thống Kê Code
-
-| Metric | Giá trị |
-|--------|---------|
-| **Tổng files** | ~45 source files |
-| **Backend routes** | 8 route files, ~25 endpoints |
-| **Data models** | 4 models, ~23 DB functions |
-| **React pages** | 11 page components |
-| **React components** | 1 shared component (ProtectedRoute) |
-| **API client functions** | 13 functions |
-| **Test cases** | 30+ smoke tests |
-| **CSS** | ~24KB (App.css) |
-| **Image assets** | 8 files, ~10MB tổng |
-| **DB tables** | 6 tables |
-| **Env variables** | 12 config vars |
-
-> [!NOTE]
-> Đây là dự án **hoàn chỉnh và đã deployed**, với đầy đủ chức năng e-commerce cơ bản: đăng ký/đăng nhập, duyệt sản phẩm, giỏ hàng, thanh toán Stripe, lịch sử đơn hàng, và Google OAuth.
+Dự án được phân phối dưới giấy phép **MIT License**.

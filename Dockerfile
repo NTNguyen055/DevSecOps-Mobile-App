@@ -13,7 +13,7 @@ FROM node:22-alpine AS runner
 WORKDIR /app
 
 # Non-root user for security
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+RUN addgroup -S ntngroup & adduser -S ntnuser -G ntngroup
 
 # Install production dependencies for backend
 COPY package*.json ./
