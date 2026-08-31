@@ -11,7 +11,6 @@ jobs:
     name: Test (backend)
     runs-on: ubuntu-latest
 
-    # Postgres service container for running tests
     services:
       postgres:
         image: postgres:16-alpine
@@ -48,12 +47,31 @@ jobs:
       - name: Apply DB schema
         run: npm run db:schema
 
+      - name: Start backend
+        run: npm start > server.log 2>&1 &
+
+      - name: Wait for backend
+        run: |
+          for i in {1..30}; do
+            if curl -f http://localhost:4001/health/db; then
+              echo "Backend is ready"
+              break
+            fi
+            echo "Waiting for backend..."
+            sleep 2
+          done
+
       - name: Run backend tests
         run: npm test
+
+      - name: Show backend logs on failure
+        if: failure()
+        run: cat server.log
 
   audit:
     name: Dependency Audit
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v5
 
@@ -61,6 +79,13 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
+
+      - name: Install backend deps
+        run: npm ci
+
+      - name: Install client deps
+        working-directory: client
+        run: npm ci
 
       - name: npm audit (backend)
         run: npm audit --audit-level=high
