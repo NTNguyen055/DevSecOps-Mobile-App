@@ -1,0 +1,69 @@
+name: Security Scan
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+  schedule:
+    # Quét lại toàn bộ mỗi thứ Hai 03:00 UTC để bắt CVE mới phát hiện sau này
+    - cron: '0 3 * * 1'
+
+permissions:
+  contents: read
+  security-events: write   # cần để upload SARIF lên tab Security
+
+jobs:
+  gitleaks:
+    name: Secret scanning (Gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # quét cả git history, không chỉ commit hiện tại
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  trivy-fs:
+    name: Dependency scan (Trivy filesystem)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Trivy filesystem scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-fs-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload SARIF to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-fs-results.sarif'
+          category: 'trivy-fs'
+
+  npm-audit:
+    name: SCA (npm audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: npm audit (backend)
+        run: npm audit --audit-level=high
+        continue-on-error: true   # cảnh báo thay vì chặn PR, siết lại sau khi đã dọn hết dep cũ
+
+      - name: npm audit (client)
+        run: npm audit --audit-level=high
+        working-directory: client
+        continue-on-error: true
