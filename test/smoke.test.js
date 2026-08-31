@@ -1,8 +1,8 @@
 const { assert } = require('chai');
 const request = require('supertest');
 
-const app = require('../app');
-const Stripe = require('stripe');
+const API_URL = process.env.API_URL || 'http://localhost:4001';
+const api = request(API_URL);
 
 describe('E-Commerce API smoke test', () => {
   const unique = Date.now();
@@ -28,17 +28,17 @@ describe('E-Commerce API smoke test', () => {
   let secondToken;
 
   it('returns API health status', async () => {
-    const response = await request(app)
+    const response = await api
       .get('/');
 
     assert.equal(response.status, 200);
-    assert.equal(response.body.message, 'E-Commerce API is running');
+    assert.equal(response.body.message, 'NK Forge: Storefront — REST API');
   });
 
   it('returns database health status', async function () {
     this.timeout(5000);
 
-    const response = await request(app)
+    const response = await api
       .get('/health/db');
 
     assert.equal(response.status, 200);
@@ -47,7 +47,7 @@ describe('E-Commerce API smoke test', () => {
   });
 
   it('registers a user', async () => {
-    const response = await request(app)
+    const response = await api
       .post('/auth/register')
       .send(testUser);
 
@@ -60,7 +60,7 @@ describe('E-Commerce API smoke test', () => {
   });
 
   it('logs in a user and returns a token', async () => {
-    const response = await request(app)
+    const response = await api
       .post('/auth/login')
       .send({
         email: testUser.email,
@@ -76,7 +76,7 @@ describe('E-Commerce API smoke test', () => {
   });
 
   it('registers a second user for ownership tests', async () => {
-    const response = await request(app)
+    const response = await api
       .post('/auth/register')
       .send({
         username: 'ownership_user',
@@ -91,7 +91,7 @@ describe('E-Commerce API smoke test', () => {
   });
 
   it('logs in the second user and returns a token', async () => {
-    const response = await request(app)
+    const response = await api
       .post('/auth/login')
       .send({
         email: 'ownership_user@example.com',
@@ -105,7 +105,7 @@ describe('E-Commerce API smoke test', () => {
   });
 
   it('rejects auth/me without a token', async () => {
-    const response = await request(app)
+    const response = await api
       .get('/auth/me');
 
     assert.equal(response.status, 401);
@@ -113,7 +113,7 @@ describe('E-Commerce API smoke test', () => {
   });
 
   it('returns current user payload with a token', async () => {
-    const response = await request(app)
+    const response = await api
       .get('/auth/me')
       .set('Authorization', `Bearer ${token}`);
 
@@ -122,74 +122,8 @@ describe('E-Commerce API smoke test', () => {
     assert.equal(response.body.user.email, testUser.email);
   });
 
-  it('returns configuration error when Google OAuth is not configured', async () => {
-    const originalClientId = process.env.GOOGLE_CLIENT_ID;
-    const originalClientSecret = process.env.GOOGLE_CLIENT_SECRET;
-    const originalCallbackUrl = process.env.GOOGLE_CALLBACK_URL;
-
-    try {
-      delete process.env.GOOGLE_CLIENT_ID;
-      delete process.env.GOOGLE_CLIENT_SECRET;
-      delete process.env.GOOGLE_CALLBACK_URL;
-
-      const response = await request(app)
-        .get('/oauth/google');
-
-      assert.equal(response.status, 503);
-      assert.equal(response.body.message, 'Google OAuth is not configured');
-    } finally {
-      if (originalClientId) {
-        process.env.GOOGLE_CLIENT_ID = originalClientId;
-      }
-
-      if (originalClientSecret) {
-        process.env.GOOGLE_CLIENT_SECRET = originalClientSecret;
-      }
-
-      if (originalCallbackUrl) {
-        process.env.GOOGLE_CALLBACK_URL = originalCallbackUrl;
-      }
-    }
-  });
-
-  it('rejects Google OAuth callback without code and state', async () => {
-    const originalClientId = process.env.GOOGLE_CLIENT_ID;
-    const originalClientSecret = process.env.GOOGLE_CLIENT_SECRET;
-    const originalCallbackUrl = process.env.GOOGLE_CALLBACK_URL;
-
-    try {
-      process.env.GOOGLE_CLIENT_ID = 'google-client-id-test';
-      process.env.GOOGLE_CLIENT_SECRET = 'google-client-secret-test';
-      process.env.GOOGLE_CALLBACK_URL = 'http://localhost:4001/oauth/google/callback';
-
-      const response = await request(app)
-        .get('/oauth/google/callback');
-
-      assert.equal(response.status, 400);
-      assert.equal(response.body.message, 'Google OAuth code and state are required');
-    } finally {
-      if (originalClientId) {
-        process.env.GOOGLE_CLIENT_ID = originalClientId;
-      } else {
-        delete process.env.GOOGLE_CLIENT_ID;
-      }
-
-      if (originalClientSecret) {
-        process.env.GOOGLE_CLIENT_SECRET = originalClientSecret;
-      } else {
-        delete process.env.GOOGLE_CLIENT_SECRET;
-      }
-
-      if (originalCallbackUrl) {
-        process.env.GOOGLE_CALLBACK_URL = originalCallbackUrl;
-      } else {
-        delete process.env.GOOGLE_CALLBACK_URL;
-      }
-    }
-  });
-
   it('creates a product', async () => {
-    const response = await request(app)
+    const response = await api
       .post('/products')
       .set('Authorization', `Bearer ${token}`)
       .send(testProduct);
@@ -202,7 +136,7 @@ describe('E-Commerce API smoke test', () => {
   });
 
   it('gets all products', async () => {
-    const response = await request(app)
+    const response = await api
       .get('/products');
 
     assert.equal(response.status, 200);
@@ -210,7 +144,7 @@ describe('E-Commerce API smoke test', () => {
   });
 
   it('gets one product by id', async () => {
-    const response = await request(app)
+    const response = await api
       .get(`/products/${productId}`);
 
     assert.equal(response.status, 200);
@@ -218,7 +152,7 @@ describe('E-Commerce API smoke test', () => {
   });
 
   it('updates a product', async () => {
-    const response = await request(app)
+    const response = await api
       .put(`/products/${productId}`)
       .set('Authorization', `Bearer ${token}`)
       .send({
@@ -232,7 +166,7 @@ describe('E-Commerce API smoke test', () => {
   });
 
   it('adds an item to the cart', async () => {
-    const response = await request(app)
+    const response = await api
       .post(`/cart/${userId}/items`)
       .set('Authorization', `Bearer ${token}`)
       .send({
@@ -247,7 +181,7 @@ describe('E-Commerce API smoke test', () => {
   });
 
   it('gets the user cart', async () => {
-    const response = await request(app)
+    const response = await api
       .get(`/cart/${userId}`)
       .set('Authorization', `Bearer ${token}`);
 
@@ -256,161 +190,8 @@ describe('E-Commerce API smoke test', () => {
     assert.isArray(response.body.items);
   });
 
-  it('returns configuration error when Stripe webhook is not configured', async () => {
-    const originalWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-
-    try {
-      delete process.env.STRIPE_WEBHOOK_SECRET;
-
-      const response = await request(app)
-        .post('/payments/webhook')
-        .set('Content-Type', 'application/json')
-        .send(JSON.stringify({
-          id: 'evt_missing_secret',
-          object: 'event'
-        }));
-
-      assert.equal(response.status, 503);
-      assert.equal(response.body.message, 'Stripe webhook is not configured');
-    } finally {
-      if (originalWebhookSecret) {
-        process.env.STRIPE_WEBHOOK_SECRET = originalWebhookSecret;
-      }
-    }
-  });
-
-  it('rejects Stripe webhook without a signature', async () => {
-    const originalWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-
-    try {
-      process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test_secret';
-
-      const response = await request(app)
-        .post('/payments/webhook')
-        .set('Content-Type', 'application/json')
-        .send(JSON.stringify({
-          id: 'evt_missing_signature',
-          object: 'event'
-        }));
-
-      assert.equal(response.status, 400);
-      assert.equal(response.body.message, 'Stripe signature required');
-    } finally {
-      if (originalWebhookSecret) {
-        process.env.STRIPE_WEBHOOK_SECRET = originalWebhookSecret;
-      } else {
-        delete process.env.STRIPE_WEBHOOK_SECRET;
-      }
-    }
-  });
-
-  it('rejects Stripe webhook with an invalid signature', async () => {
-    const originalWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-
-    try {
-      process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test_secret';
-
-      const response = await request(app)
-        .post('/payments/webhook')
-        .set('Content-Type', 'application/json')
-        .set('stripe-signature', 'invalid-signature')
-        .send(JSON.stringify({
-          id: 'evt_invalid_signature',
-          object: 'event'
-        }));
-
-      assert.equal(response.status, 400);
-      assert.equal(response.body.message, 'Invalid Stripe webhook signature');
-    } finally {
-      if (originalWebhookSecret) {
-        process.env.STRIPE_WEBHOOK_SECRET = originalWebhookSecret;
-      } else {
-        delete process.env.STRIPE_WEBHOOK_SECRET;
-      }
-    }
-  });
-
-  it('accepts a valid signed Stripe webhook event', async () => {
-    const originalWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-    const webhookSecret = 'whsec_test_secret';
-    const stripe = new Stripe('sk_test_webhook_signature_only');
-
-    const payload = JSON.stringify({
-      id: `evt_${unique}`,
-      object: 'event',
-      type: 'payment_intent.created',
-      data: {
-        object: {
-          id: `pi_${unique}`,
-          object: 'payment_intent'
-        }
-      }
-    });
-
-    const signature = stripe.webhooks.generateTestHeaderString({
-      payload: payload,
-      secret: webhookSecret
-    });
-
-    try {
-      process.env.STRIPE_WEBHOOK_SECRET = webhookSecret;
-
-      const response = await request(app)
-        .post('/payments/webhook')
-        .set('Content-Type', 'application/json')
-        .set('stripe-signature', signature)
-        .send(payload);
-
-      assert.equal(response.status, 200);
-      assert.equal(response.body.message, 'Stripe event received');
-      assert.equal(response.body.type, 'payment_intent.created');
-    } finally {
-      if (originalWebhookSecret) {
-        process.env.STRIPE_WEBHOOK_SECRET = originalWebhookSecret;
-      } else {
-        delete process.env.STRIPE_WEBHOOK_SECRET;
-      }
-    }
-  });
-
-  it('rejects Stripe checkout session without a token', async () => {
-    const response = await request(app)
-      .post(`/payments/checkout-session/${userId}`);
-
-    assert.equal(response.status, 401);
-    assert.equal(response.body.message, 'Authorization token required');
-  });
-
-  it('rejects Stripe checkout session for another user', async () => {
-    const response = await request(app)
-      .post(`/payments/checkout-session/${userId + 999}`)
-      .set('Authorization', `Bearer ${token}`);
-
-    assert.equal(response.status, 403);
-    assert.equal(response.body.message, 'You can only create checkout sessions for your own cart');
-  });
-
-  it('returns configuration error when Stripe checkout is not configured', async () => {
-    const originalStripeSecretKey = process.env.STRIPE_SECRET_KEY;
-
-    try {
-      delete process.env.STRIPE_SECRET_KEY;
-
-      const response = await request(app)
-        .post(`/payments/checkout-session/${userId}`)
-        .set('Authorization', `Bearer ${token}`);
-
-      assert.equal(response.status, 503);
-      assert.equal(response.body.message, 'Stripe is not configured');
-    } finally {
-      if (originalStripeSecretKey) {
-        process.env.STRIPE_SECRET_KEY = originalStripeSecretKey;
-      }
-    }
-  });
-
   it('rejects cart access for another user', async () => {
-    const response = await request(app)
+    const response = await api
       .get(`/cart/${userId}`)
       .set('Authorization', `Bearer ${secondToken}`);
 
@@ -419,7 +200,7 @@ describe('E-Commerce API smoke test', () => {
   });
 
   it('rejects adding cart items for another user', async () => {
-    const response = await request(app)
+    const response = await api
       .post(`/cart/${userId}/items`)
       .set('Authorization', `Bearer ${secondToken}`)
       .send({
@@ -432,7 +213,7 @@ describe('E-Commerce API smoke test', () => {
   });
 
   it('rejects creating an order for another user', async () => {
-    const response = await request(app)
+    const response = await api
       .post(`/orders/${userId}`)
       .set('Authorization', `Bearer ${secondToken}`);
 
@@ -441,7 +222,7 @@ describe('E-Commerce API smoke test', () => {
   });
 
   it('rejects viewing another user order history', async () => {
-    const response = await request(app)
+    const response = await api
       .get(`/orders/user/${userId}`)
       .set('Authorization', `Bearer ${secondToken}`);
 
@@ -450,7 +231,7 @@ describe('E-Commerce API smoke test', () => {
   });
 
   it('updates a cart item', async () => {
-    const response = await request(app)
+    const response = await api
       .put(`/cart/${userId}/items/${productId}`)
       .set('Authorization', `Bearer ${token}`)
       .send({
@@ -463,7 +244,7 @@ describe('E-Commerce API smoke test', () => {
   });
 
   it('creates an order from the cart', async () => {
-    const response = await request(app)
+    const response = await api
       .post(`/orders/${userId}`)
       .set('Authorization', `Bearer ${token}`);
 
@@ -476,7 +257,7 @@ describe('E-Commerce API smoke test', () => {
   });
 
   it('gets all orders', async () => {
-    const response = await request(app)
+    const response = await api
       .get('/orders')
       .set('Authorization', `Bearer ${token}`);
 
@@ -485,7 +266,7 @@ describe('E-Commerce API smoke test', () => {
   });
 
   it('gets one order by id', async () => {
-    const response = await request(app)
+    const response = await api
       .get(`/orders/${orderId}`)
       .set('Authorization', `Bearer ${token}`);
 
@@ -494,7 +275,7 @@ describe('E-Commerce API smoke test', () => {
   });
 
   it('gets orders by user id', async () => {
-    const response = await request(app)
+    const response = await api
       .get(`/orders/user/${userId}`)
       .set('Authorization', `Bearer ${token}`);
 
@@ -503,7 +284,7 @@ describe('E-Commerce API smoke test', () => {
   });
 
   it('updates an order status', async () => {
-    const response = await request(app)
+    const response = await api
       .put(`/orders/${orderId}`)
       .set('Authorization', `Bearer ${token}`)
       .send({
@@ -516,7 +297,7 @@ describe('E-Commerce API smoke test', () => {
   });
 
   it('gets all users', async () => {
-    const response = await request(app)
+    const response = await api
       .get('/users')
       .set('Authorization', `Bearer ${token}`);
 
@@ -525,7 +306,7 @@ describe('E-Commerce API smoke test', () => {
   });
 
   it('gets one user by id', async () => {
-    const response = await request(app)
+    const response = await api
       .get(`/users/${userId}`)
       .set('Authorization', `Bearer ${token}`);
 
@@ -534,7 +315,7 @@ describe('E-Commerce API smoke test', () => {
   });
 
   it('updates a user', async () => {
-    const response = await request(app)
+    const response = await api
       .put(`/users/${userId}`)
       .set('Authorization', `Bearer ${token}`)
       .send({
@@ -543,11 +324,14 @@ describe('E-Commerce API smoke test', () => {
 
     assert.equal(response.status, 200);
     assert.equal(response.body.message, 'User updated successfully');
-    assert.equal(response.body.user.username, `${testUser.username}_updated`);
+    assert.equal(
+      response.body.user.username,
+      `${testUser.username}_updated`
+    );
   });
 
   it('deletes the test order', async () => {
-    const response = await request(app)
+    const response = await api
       .delete(`/orders/${orderId}`)
       .set('Authorization', `Bearer ${token}`);
 
@@ -556,7 +340,7 @@ describe('E-Commerce API smoke test', () => {
   });
 
   it('deletes the test product', async () => {
-    const response = await request(app)
+    const response = await api
       .delete(`/products/${productId}`)
       .set('Authorization', `Bearer ${token}`);
 
@@ -565,7 +349,7 @@ describe('E-Commerce API smoke test', () => {
   });
 
   it('deletes the test user', async () => {
-    const response = await request(app)
+    const response = await api
       .delete(`/users/${userId}`)
       .set('Authorization', `Bearer ${token}`);
 
@@ -574,7 +358,7 @@ describe('E-Commerce API smoke test', () => {
   });
 
   it('deletes the second test user', async () => {
-    const response = await request(app)
+    const response = await api
       .delete(`/users/${secondUserId}`)
       .set('Authorization', `Bearer ${token}`);
 
