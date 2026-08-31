@@ -1,34 +1,25 @@
-# ---- Stage 1: Build Frontend (React + Vite) ----
-FROM node:22-alpine AS client-builder
-WORKDIR /app/client
-
-COPY client/package*.json ./
-RUN npm ci
-
-COPY client/ ./
-RUN npm run build
-
-# ---- Stage 2: Production Server ----
+# ---- Production Server (API Only) ----
+# Frontend is now a React Native mobile app (Expo), no longer served by Express.
 FROM node:22-alpine AS runner
 WORKDIR /app
 
 # Non-root user for security
-RUN addgroup -S ntngroup & adduser -S ntnuser -G ntngroup
+RUN addgroup -S ntngroup && adduser -S ntnuser -G ntngroup
 
-# Install production dependencies for backend
+# Install production dependencies for backend only
 COPY package*.json ./
 RUN npm ci --omit=dev
 
 # Copy backend source code
-COPY . .
+COPY app.js server.js ./
+COPY routes/ routes/
+COPY models/ models/
+COPY middleware/ middleware/
+COPY db/ db/
+COPY docs/ docs/
+COPY scripts/ scripts/
 
-# Copy built frontend assets from stage 1 into client/dist
-COPY --from=client-builder /app/client/dist ./client/dist
-
-# Remove unnecessary source files from final image (keep docs/openapi.yaml for Swagger UI)
-RUN rm -rf client/src client/node_modules test/ docs/*.md .git .env*
-
-USER appuser
+USER ntnuser
 
 EXPOSE 4001
 
@@ -36,6 +27,6 @@ ENV NODE_ENV=production
 ENV PORT=4001
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget --spider -q http://localhost:4001/health/db || exit 1
+  CMD node -e "require('http').get('http://localhost:4001/health/db', (res) => process.exit(res.statusCode === 200 ? 0 : 1))" || exit 1
 
 CMD ["node", "server.js"]
