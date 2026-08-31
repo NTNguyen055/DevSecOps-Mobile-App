@@ -3,7 +3,7 @@ name: 🐛 Bug report
 about: Báo cáo một lỗi trong ứng dụng
 title: "[BUG] "
 labels: bug
-assignees: ''
+assignees: ""
 ---
 
 ## Mô tả lỗi
@@ -26,10 +26,19 @@ assignees: ''
 
 ## Môi trường
 
-- OS:
-- Node version:
-- Chạy bằng Docker hay local dev:
+### Development Environment
+
+- OS: (Windows / macOS / Linux)
+- Node version: (eg. 22.x)
+- Chạy bằng: (Docker Compose / Local Dev / Expo Go)
 - Branch/commit:
+
+### Mobile Client (nếu liên quan)
+
+- Platform: (Android / iOS / Both)
+- Device/Emulator: (eg. Pixel 6 emulator, iPhone 15 Pro)
+- Expo version: (eg. ~57.0.18)
+- React Native version: (eg. 0.86.3)
 
 ## Log / Screenshot
 

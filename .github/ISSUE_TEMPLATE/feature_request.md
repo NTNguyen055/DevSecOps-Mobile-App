@@ -3,7 +3,7 @@ name: ✨ Feature request
 about: Đề xuất tính năng hoặc cải tiến mới
 title: "[FEATURE] "
 labels: feature
-assignees: ''
+assignees: ""
 ---
 
 ## Vấn đề cần giải quyết
@@ -21,9 +21,13 @@ assignees: ''
 ## Phạm vi ảnh hưởng
 
 - [ ] Backend (API)
-- [ ] Frontend (client)
+- [ ] Mobile Client (Expo/React Native)
+  - [ ] iOS
+  - [ ] Android
+  - [ ] Both
 - [ ] Database (schema thay đổi)
 - [ ] CI/CD / hạ tầng
+- [ ] Docker
 - [ ] Tài liệu
 
 ## Ghi chú thêm

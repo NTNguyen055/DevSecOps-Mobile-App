@@ -17,12 +17,26 @@ Closes #
 
 ## Checklist trước khi merge
 
-- [ ] Code build thành công local (`npm run build` / `docker compose up --build`)
-- [ ] Đã chạy `npm test` và toàn bộ test pass
-- [ ] Không có secret / API key / password hardcode trong code hoặc commit history
-- [ ] Đã cập nhật tài liệu liên quan (README, openapi.yaml, docs/) nếu API thay đổi
+### Backend & Infrastructure
+
+- [ ] Backend dependencies: `npm install` & `npm test` pass
+- [ ] Docker build: `docker compose up --build` thành công
+- [ ] Database schema: Nếu có thay đổi, cần migration scripts
+- [ ] Không có secret / API key / password hardcode
+- [ ] Đã cập nhật tài liệu liên quan (README, openapi.yaml, docs/)
+
+### Mobile Client
+
+- [ ] Dependencies: `npm --prefix client install`
+- [ ] Tested on: (Expo Go / Android Emulator / iOS Simulator / Physical device)
+- [ ] Không có hardcode API URL hoặc secrets
+- [ ] Có responsive UI cho cả Android & iOS
+
+### Code Quality & Security
+
 - [ ] Đã tự review lại diff của chính mình trước khi request review
-- [ ] CI (lint, test, security scan) đã pass màu xanh
+- [ ] CI (test, audit, security scan) đã pass ✅
+- [ ] Lint/format: `npm run lint` (nếu có script)
 
 ## Ghi chú cho reviewer
 

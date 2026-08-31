@@ -1,45 +1,42 @@
 require('dotenv').config();
 
-const path = require('path');
 const express = require('express');
 const cors = require('cors');
 const db = require('./db');
 const authRoutes = require('./routes/auth.routes');
-const oauthRoutes = require('./routes/oauth.routes');
 const productRoutes = require('./routes/products.routes');
 const userRoutes = require('./routes/users.routes');
 const cartRoutes = require('./routes/cart.routes');
 const orderRoutes = require('./routes/orders.routes');
-const paymentRoutes = require('./routes/payments.routes');
-const paymentWebhookRoutes = require('./routes/paymentWebhooks.routes');
 const swaggerUi = require('swagger-ui-express');
 const YAML = require('yamljs');
 const swaggerDocument = YAML.load('./docs/openapi.yaml');
 
 const app = express();
 
-const clientOrigin = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
-const clientDistPath = path.join(__dirname, 'client', 'dist');
+// Mobile app (React Native/Expo) does not have a fixed browser origin.
+// Allow all origins in development; set CLIENT_ORIGIN=* or specific IPs in production.
+const clientOrigin = process.env.CLIENT_ORIGIN || '*';
 
 app.use(cors({
-  origin: clientOrigin,
-  credentials: true
+  origin: clientOrigin === '*' ? true : clientOrigin,
+  credentials: clientOrigin !== '*'
 }));
-
-app.use('/payments/webhook', express.raw({ type: 'application/json' }), paymentWebhookRoutes);
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
-if (process.env.NODE_ENV !== 'production') {
-  app.get('/', (req, res) => {
-    res.status(200).json({
-      message: 'E-Commerce API is running'
-    });
+// API root info (available in all environments since there's no web frontend)
+app.get('/', (req, res) => {
+  res.status(200).json({
+    message: 'NK Forge: Storefront — REST API',
+    version: '1.0.0',
+    docs: '/api-docs',
+    health: '/health/db'
   });
-}
+});
 
 app.get('/health/db', async (req, res) => {
   try {
@@ -58,19 +55,14 @@ app.get('/health/db', async (req, res) => {
 });
 
 app.use('/auth', authRoutes);
-app.use('/oauth', oauthRoutes);
 app.use('/products', productRoutes);
 app.use('/users', userRoutes);
 app.use('/cart', cartRoutes);
 app.use('/orders', orderRoutes);
-app.use('/payments', paymentRoutes);
 
-if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(clientDistPath));
-
-  app.get(/.*/, (req, res) => {
-    res.sendFile(path.join(clientDistPath, 'index.html'));
-  });
-}
+// 404 handler for unknown API routes
+app.use((req, res) => {
+  res.status(404).json({ message: `Route ${req.method} ${req.path} not found` });
+});
 
 module.exports = app;

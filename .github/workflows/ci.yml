@@ -7,32 +7,11 @@ on:
     branches: [main, develop]
 
 jobs:
-  lint:
-    name: Lint (client)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-node@v5
-        with:
-          node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: client/package-lock.json
-
-      - name: Install client deps
-        run: npm ci
-        working-directory: client
-
-      - name: Run eslint
-        run: npm run lint
-        working-directory: client
-
   test:
     name: Test (backend)
     runs-on: ubuntu-latest
 
-    # Postgres chạy như service container trong chính job CI,
-    # không cần AWS/RDS thật cho bước test này.
+    # Postgres service container for running tests
     services:
       postgres:
         image: postgres:16-alpine
@@ -53,7 +32,7 @@ jobs:
       PORT: 4001
       DATABASE_URL: postgresql://ci_user:ci_password@localhost:5432/ci_ecommerce_db
       JWT_SECRET: ${{ secrets.JWT_SECRET }}
-      CLIENT_ORIGIN: http://localhost:5173
+      CLIENT_ORIGIN: '*'
 
     steps:
       - uses: actions/checkout@v5
@@ -69,13 +48,12 @@ jobs:
       - name: Apply DB schema
         run: npm run db:schema
 
-      - name: Run tests
+      - name: Run backend tests
         run: npm test
 
-  build:
-    name: Build client
+  audit:
+    name: Dependency Audit
     runs-on: ubuntu-latest
-    needs: [lint, test]
     steps:
       - uses: actions/checkout@v5
 
@@ -84,5 +62,9 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
-      - name: Build (backend deps + client build)
-        run: npm run build
+      - name: npm audit (backend)
+        run: npm audit --audit-level=high
+
+      - name: npm audit (client)
+        run: npm audit --audit-level=high
+        working-directory: client
