@@ -61,9 +61,7 @@ jobs:
 
       - name: npm audit (backend)
         run: npm audit --audit-level=high
-        continue-on-error: true   # cảnh báo thay vì chặn PR, siết lại sau khi đã dọn hết dep cũ
 
       - name: npm audit (client)
         run: npm audit --audit-level=high
         working-directory: client
-        continue-on-error: true
