@@ -49,17 +49,25 @@ export async function getCurrentUser(token) {
 }
 
 export async function getCart(userId, token) {
-  return request(`/cart/${userId}`, {
+  const result = await request(`/cart/${userId}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
+
+  console.log('GET CART RESPONSE:', JSON.stringify(result, null, 2));
+
+  return result;
 }
 
 export async function addCartItem(userId, token, productId, quantity = 1) {
-  return request(`/cart/${userId}/items`, {
+  const result = await request(`/cart/${userId}/items`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
     body: JSON.stringify({ productId, quantity }),
   });
+
+  console.log('ADD CART RESPONSE:', JSON.stringify(result, null, 2));
+
+  return result;
 }
 
 export async function updateCartItem(userId, token, productId, quantity) {
