@@ -34,5 +34,11 @@
   },
   "engines": {
     "node": ">=22"
+  },
+  "overrides": {
+    "mocha": {
+      "diff": "9.0.0",
+      "serialize-javascript": "7.1.1"
+    }
   }
 }

@@ -1,0 +1,27 @@
+# CODEOWNERS
+# Mỗi PR chạm vào các đường dẫn dưới đây sẽ tự động yêu cầu review từ owner tương ứng.
+# Đổi @NTNguyen055 thành username GitHub thật của bạn/team member phụ trách.
+# Docs: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Mặc định: toàn bộ repo do bạn review
+*                       @NTNguyen055
+
+# Backend (API, models, routes, middleware, db)
+/app.js                 @NTNguyen055
+/server.js              @NTNguyen055
+/routes/                @NTNguyen055
+/models/                @NTNguyen055
+/middleware/            @NTNguyen055
+/db/                    @NTNguyen055
+
+# Frontend
+/client/                @NTNguyen055
+
+# CI/CD & hạ tầng — nhạy cảm, nên có review riêng khi có thêm người
+/.github/workflows/     @NTNguyen055
+/Dockerfile             @NTNguyen055
+/docker-compose.yml     @NTNguyen055
+
+# Tài liệu
+/docs/                  @NTNguyen055
+*.md                    @NTNguyen055
