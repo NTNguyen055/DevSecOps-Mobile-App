@@ -17,7 +17,7 @@
 
 | Hạng mục | Mô tả |
 |----------|--------|
-| Branch protection trên `main` | Require PR, ≥1 approval, require status checks pass, no force push |
+| Branch protection trên `main` | Require PR, ≥ 0 approval, require status checks pass, no force push |
 | Branch protection trên `develop` | Require PR, require status checks pass |
 | CODEOWNERS | File `.github/CODEOWNERS` – chỉ định reviewer cho từng phần code |
 | Issue templates | Bug report, feature request, security vulnerability |

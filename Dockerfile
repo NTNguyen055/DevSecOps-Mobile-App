@@ -1,14 +1,20 @@
 # ---- Production Server (API Only) ----
-# Frontend is now a React Native mobile app (Expo), no longer served by Express.
+# Frontend is React Native / Expo, no longer served by Express.
 FROM node:22-alpine AS runner
+
+RUN npm install -g npm@latest && \
+    apk upgrade --no-cache && \
+    npm cache clean --force
+
 WORKDIR /app
 
 # Non-root user for security
 RUN addgroup -S ntngroup && adduser -S ntnuser -G ntngroup
 
-# Install production dependencies for backend only
+# Install production dependencies
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev && \
+    npm cache clean --force
 
 # Copy backend source code
 COPY app.js server.js ./
@@ -18,6 +24,9 @@ COPY middleware/ middleware/
 COPY db/ db/
 COPY docs/ docs/
 COPY scripts/ scripts/
+
+# npm is not required at runtime
+RUN rm -rf /usr/local/lib/node_modules/npm
 
 USER ntnuser
 
