@@ -5,7 +5,7 @@ console.log('NativeModule:', AsyncStorage?.getItem);
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getCurrentUser, loginUser } from '../api/apiClient';
-import { AuthContext } from './authContext';
+import { AuthContext } from './AuthContext';
 
 const TOKEN_KEY = 'ecommerce_token';
 const USER_KEY = 'ecommerce_user';
