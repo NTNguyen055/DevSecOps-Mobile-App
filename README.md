@@ -178,7 +178,7 @@ Tạo file `.env` tại thư mục gốc của dự án:
 PORT=4001
 NODE_ENV=development
 CLIENT_ORIGIN=http://localhost:5173
-JWT_SECRET=************************************************
+JWT_SECRET=<your-jwt-secret>
 
 # Thông tin tài khoản PostgreSQL
 POSTGRES_USER=your
