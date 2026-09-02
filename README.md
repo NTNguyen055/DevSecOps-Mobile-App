@@ -178,15 +178,15 @@ Tạo file `.env` tại thư mục gốc của dự án:
 PORT=4001
 NODE_ENV=development
 CLIENT_ORIGIN=http://localhost:5173
-JWT_SECRET=316b0feebc21414d336554a1873b842ede93bed2f05b7d913bf90164bc46ef88
+JWT_SECRET=************************************************
 
 # Thông tin tài khoản PostgreSQL
-POSTGRES_USER=ntnguyen123
-POSTGRES_PASSWORD=Banhmi_4o
-POSTGRES_DB=ecommerce_db
+POSTGRES_USER=your
+POSTGRES_PASSWORD=your
+POSTGRES_DB=your
 
 # Chuỗi kết nối khi chạy ngoài máy thật (Local Dev)
-DATABASE_URL=postgresql://ntnguyen123:Banhmi_4o@localhost:5432/ecommerce_db
+DATABASE_URL=postgresql://your:your@localhost:5432/ecommerce_db
 ```
 
 Tạo file `client/.env` tại thư mục `client/`:
