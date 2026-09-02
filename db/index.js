@@ -6,12 +6,17 @@ if (!connectionString) {
   throw new Error('DATABASE_URL is not defined');
 }
 
-const isSsl = connectionString.includes('sslmode=require') || process.env.DB_SSL === 'true';
+const poolConfig = {
+  connectionString
+};
 
-const pool = new Pool({
-  connectionString: connectionString,
-  ssl: isSsl ? { rejectUnauthorized: false } : false
-});
+if (process.env.NODE_ENV === 'production') {
+  poolConfig.ssl = {
+    rejectUnauthorized: false
+  };
+}
+
+const pool = new Pool(poolConfig);
 
 module.exports = {
   query: (text, params) => pool.query(text, params),
