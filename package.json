@@ -8,6 +8,7 @@
     "start": "node server.js",
     "dev": "nodemon server.js",
     "db:schema": "node scripts/apply-schema.js",
+    "db:schema:production": "node scripts/apply-production-schema.js",
     "mobile": "npm --prefix client start",
     "mobile:android": "npm --prefix client run android"
   },
@@ -16,6 +17,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@aws-sdk/client-secrets-manager": "^3.1124.0",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
