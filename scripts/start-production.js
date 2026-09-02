@@ -63,7 +63,7 @@ async function start() {
 
   process.env.DATABASE_URL =
     `postgresql://${username}:${password}` +
-    `@${RDS_HOST}:${RDS_PORT}/${RDS_DATABASE}?sslmode=require`;
+    `@${RDS_HOST}:${RDS_PORT}/${RDS_DATABASE}`;
 
   process.env.JWT_SECRET = jwtSecret.JWT_SECRET;
 
