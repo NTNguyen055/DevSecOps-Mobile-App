@@ -54,13 +54,15 @@ jobs:
         run: |
           for i in {1..30}; do
             if curl -f http://localhost:4001/health/db; then
-              echo "Backend is ready"
-              break
+              exit 0
             fi
-            echo "Waiting for backend..."
+
+            echo "Waiting for backend... ($i/30)"
             sleep 2
           done
 
+          echo "Backend did not become ready within 60 seconds"
+          exit 1
       - name: Run backend tests
         run: npm test
 
