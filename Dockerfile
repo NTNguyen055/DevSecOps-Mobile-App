@@ -13,7 +13,7 @@ RUN addgroup -S ntngroup && adduser -S ntnuser -G ntngroup
 
 # Install production dependencies
 COPY package*.json ./
-RUN npm ci --omit=dev && \
+RUN npm ci --omit=dev --no-audit && \
     npm cache clean --force
 
 # Copy backend source code
