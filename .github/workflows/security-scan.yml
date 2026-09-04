@@ -59,24 +59,49 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Build Docker image for scanning
-        run: docker build -t ecommerce-api:scan .
+      # Build image duy nhất một lần.
+      # Image này sẽ được scan và sau đó publish.
+      - name: Build Docker image
+        run: |
+          docker build \
+            -t ntnguyen055/devsecops-mobile-app:${{ github.sha }} \
+            .
 
+      # Scan chính image vừa build.
       - name: Run Trivy image scan
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: 'ecommerce-api:scan'
+          image-ref: 'ntnguyen055/devsecops-mobile-app:${{ github.sha }}'
           format: 'sarif'
           output: 'trivy-image-results.sarif'
           severity: 'CRITICAL,HIGH'
           exit-code: '1'
 
+      # Upload kết quả scan lên GitHub Security.
       - name: Upload SARIF to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: 'trivy-image-results.sarif'
           category: 'trivy-image'
+
+      # Chỉ lưu image nếu security scan PASS.
+      # Publish job sẽ sử dụng chính image artifact này.
+      - name: Save Docker image
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')
+        run: |
+          docker save \
+            ntnguyen055/devsecops-mobile-app:${{ github.sha }} \
+            | gzip > docker-image.tar.gz
+
+      - name: Upload Docker image artifact
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image-${{ github.sha }}
+          path: docker-image.tar.gz
+          if-no-files-found: error
+          retention-days: 1
 
   docker-publish:
     name: Build and Push Docker Image
@@ -85,10 +110,22 @@ jobs:
       - trivy-fs
       - trivy-docker
     runs-on: ubuntu-latest
+
     if: github.event_name == 'push' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')
 
     steps:
       - uses: actions/checkout@v6
+
+      # Tải chính Docker image đã được Trivy scan.
+      - name: Download scanned Docker image
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image-${{ github.sha }}
+
+      # Load image vào Docker của publish runner.
+      - name: Load scanned Docker image
+        run: |
+          gunzip -c docker-image.tar.gz | docker load
 
       - name: Set Docker tag
         id: docker-tag
@@ -105,13 +142,15 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build Docker image
+      # Retag chính image đã được scan.
+      # Không build lại image.
+      - name: Tag scanned Docker image
         run: |
-          docker build \
-            -t ntnguyen055/devsecops-mobile-app:${{ steps.docker-tag.outputs.tag }} \
-            -t ntnguyen055/devsecops-mobile-app:${{ github.sha }} \
-            .
+          docker tag \
+            ntnguyen055/devsecops-mobile-app:${{ github.sha }} \
+            ntnguyen055/devsecops-mobile-app:${{ steps.docker-tag.outputs.tag }}
 
+      # Push chính image đã được Trivy scan.
       - name: Push Docker image
         run: |
           docker push ntnguyen055/devsecops-mobile-app:${{ steps.docker-tag.outputs.tag }}
