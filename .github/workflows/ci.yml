@@ -42,7 +42,7 @@ jobs:
           cache: 'npm'
 
       - name: Install backend deps
-        run: npm ci
+        run: npm ci --no-audit
 
       - name: Apply DB schema
         run: npm run db:schema
