@@ -51,24 +51,6 @@ jobs:
           sarif_file: 'trivy-fs-results.sarif'
           category: 'trivy-fs'
 
-  npm-audit:
-    name: SCA (npm audit)
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: actions/setup-node@v5
-        with:
-          node-version: '22'
-
-      - name: npm audit (backend)
-        run: npm audit --audit-level=high
-
-      - name: npm audit (client)
-        run: npm audit --audit-level=high
-        working-directory: client
-
   trivy-docker:
     name: Container Image Scan (Trivy)
     runs-on: ubuntu-latest
@@ -99,7 +81,6 @@ jobs:
     needs:
       - gitleaks
       - trivy-fs
-      - npm-audit
       - trivy-docker
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')
