@@ -82,6 +82,13 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
+      - name: Install backend deps
+        run: npm ci
+
+      - name: Install client deps
+        working-directory: client
+        run: npm ci
+
       - name: npm audit (backend)
         run: npm audit --audit-level=high
 
