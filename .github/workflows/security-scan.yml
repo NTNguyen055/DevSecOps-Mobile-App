@@ -68,6 +68,10 @@ jobs:
           npm config set fetch-retry-mintimeout 1000
           npm config set fetch-retry-maxtimeout 5000
 
+      - name: Configure npm audit timeout
+        run: |
+          npm config set fetch-timeout 30000
+
       - name: npm audit (backend)
         run: npm audit --audit-level=high
 
