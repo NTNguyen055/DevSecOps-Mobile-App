@@ -62,6 +62,11 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Check Node and npm versions
+        run: |
+          node --version
+          npm --version
+
       - name: Configure npm retry
         run: |
           npm config set fetch-retries 1
