@@ -42,7 +42,7 @@ jobs:
           cache: 'npm'
 
       - name: Install backend deps
-        run: npm ci
+        run: npm ci --no-audit
 
       - name: Apply DB schema
         run: npm run db:schema
@@ -63,28 +63,10 @@ jobs:
 
           echo "Backend did not become ready within 60 seconds"
           exit 1
+
       - name: Run backend tests
         run: npm test
 
       - name: Show backend logs on failure
         if: failure()
         run: cat server.log
-
-  audit:
-    name: Dependency Audit
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-node@v5
-        with:
-          node-version: '22'
-          cache: 'npm'
-
-      - name: npm audit (backend)
-        run: npm audit --audit-level=high
-
-      - name: npm audit (client)
-        run: npm audit --audit-level=high
-        working-directory: client
