@@ -48,8 +48,8 @@ jobs:
             --parameters "commands=[
               \"set -e\",
               \"cd /home/ubuntu/app\",
-              \"git fetch origin main\",
-              \"git reset --hard origin/main\",
+              \"sudo -u ubuntu git fetch origin main\",
+              \"sudo -u ubuntu git reset --hard origin/main\",
               \"DOCKER_IMAGE=${DEPLOY_IMAGE} docker compose --env-file .env.production pull\",
               \"DOCKER_IMAGE=${DEPLOY_IMAGE} docker compose --env-file .env.production up -d --wait\",
               \"sudo install -m 644 nginx/devsecops-api.conf /etc/nginx/sites-available/devsecops-api\",
