@@ -14,15 +14,23 @@ permissions:
   id-token: write
   contents: read
 
+concurrency:
+  group: production-deployment
+  cancel-in-progress: false
+
 jobs:
   deploy:
     name: Deploy to EC2
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    if: >
+      (github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
 
     steps:
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v5
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: arn:aws:iam::900558045438:role/devsecops-github-actions-role
           aws-region: ap-southeast-1
@@ -56,7 +64,7 @@ jobs:
               \"sudo ln -sfn /etc/nginx/sites-available/devsecops-api /etc/nginx/sites-enabled/devsecops-api\",
               \"sudo nginx -t\",
               \"sudo systemctl reload nginx\",
-              \"docker compose --env-file .env.production ps\",
+              \"DOCKER_IMAGE=${DEPLOY_IMAGE} docker compose --env-file .env.production ps\",
               \"curl --fail --silent --show-error http://127.0.0.1:4001/health/db\",
               \"curl --fail --silent --show-error http://devsecops-mobile.duckdns.org/health/db\"
             ]" \
