@@ -21,7 +21,7 @@ services:
       RDS_PORT: ${RDS_PORT:-5432}
       RDS_DATABASE: ${RDS_DATABASE}
 
-      CLIENT_ORIGIN: ${CLIENT_ORIGIN:-*}
+      CLIENT_ORIGIN: ${CLIENT_ORIGIN}
 
     command: ["node", "scripts/start-production.js"]
 
