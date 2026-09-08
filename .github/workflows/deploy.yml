@@ -104,7 +104,7 @@ jobs:
 
               "echo === Check HTTP to HTTPS redirect ===",
               "HTTP_STATUS=$(curl -s -o /dev/null -w \"%{http_code}\" http://${DOMAIN}/health/db)",
-              "HTTP_LOCATION=$(curl -s -I http://${DOMAIN}/health/db | grep -i '^location:' | tr -d '\\r')",
+              "HTTP_LOCATION=$(curl -s -I http://${DOMAIN}/health/db | grep -i \"^location:\" | tr -d '\\r')",
               "echo \"HTTP status: ${HTTP_STATUS}\"",
               "echo \"HTTP location: ${HTTP_LOCATION}\"",
               "test \"${HTTP_STATUS}\" = \"301\"",
