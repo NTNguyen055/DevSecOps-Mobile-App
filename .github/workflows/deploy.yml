@@ -1,10 +1,9 @@
-name: Deploy Production
+name: Deploy to AWS EC2
 
 on:
   workflow_dispatch:
   workflow_run:
-    workflows:
-      - Security Scan
+    workflows: ["Security Scan"]
     types:
       - completed
     branches:
@@ -18,6 +17,12 @@ concurrency:
   group: production-deployment
   cancel-in-progress: false
 
+env:
+  AWS_REGION: ap-southeast-1
+  EC2_INSTANCE_ID: i-0ca2b3a3d02304351
+  DOCKER_IMAGE: ntnguyen055/devsecops-mobile-app
+  DOMAIN: devsecops-mobile.duckdns.org
+
 jobs:
   deploy:
     name: Deploy to EC2
@@ -29,69 +34,107 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: arn:aws:iam::900558045438:role/devsecops-github-actions-role
-          aws-region: ap-southeast-1
+          aws-region: ${{ env.AWS_REGION }}
 
-      - name: Set deployment image
-        id: deployment
-        env:
-          WORKFLOW_SHA: ${{ github.event.workflow_run.head_sha }}
+      - name: Determine Docker image tag
+        id: image
+        shell: bash
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "image=ntnguyen055/devsecops-mobile-app:latest" >> "$GITHUB_OUTPUT"
+            echo "image=${DOCKER_IMAGE}:latest" >> "$GITHUB_OUTPUT"
           else
-            echo "image=ntnguyen055/devsecops-mobile-app:${WORKFLOW_SHA}" >> "$GITHUB_OUTPUT"
+            echo "image=${DOCKER_IMAGE}:${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Deploy via SSM
-        env:
-          DEPLOY_IMAGE: ${{ steps.deployment.outputs.image }}
+      - name: Deploy application via AWS SSM
+        shell: bash
         run: |
           COMMAND_ID=$(aws ssm send-command \
-            --instance-ids i-0ca2b3a3d02304351 \
-            --document-name AWS-RunShellScript \
-            --parameters "commands=[
-              \"set -e\",
-              \"cd /home/ubuntu/app\",
-              \"sudo -u ubuntu git fetch origin main\",
-              \"sudo -u ubuntu git reset --hard origin/main\",
-              \"DOCKER_IMAGE=${DEPLOY_IMAGE} docker compose --env-file .env.production pull\",
-              \"DOCKER_IMAGE=${DEPLOY_IMAGE} docker compose --env-file .env.production up -d --wait\",
-              \"sudo install -m 644 nginx/devsecops-api.conf /etc/nginx/sites-available/devsecops-api\",
-              \"sudo ln -sfn /etc/nginx/sites-available/devsecops-api /etc/nginx/sites-enabled/devsecops-api\",
-              \"sudo nginx -t\",
-              \"sudo systemctl reload nginx\",
-              \"DOCKER_IMAGE=${DEPLOY_IMAGE} docker compose --env-file .env.production ps\",
-              \"curl --fail --silent --show-error http://127.0.0.1:4001/health/db\",
-              \"curl --fail --silent --show-error http://devsecops-mobile.duckdns.org/health/db\"
-            ]" \
-            --comment "Deploy DevSecOps Mobile App to EC2" \
+            --instance-ids "${EC2_INSTANCE_ID}" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploy DevSecOps Mobile App" \
+            --parameters commands='[
+              "set -e",
+              "export DOMAIN=${{ env.DOMAIN }}",
+              "export DOCKER_IMAGE=${{ steps.image.outputs.image }}",
+
+              "echo === Sync repository ===",
+              "cd /home/ubuntu/app",
+              "sudo -u ubuntu git fetch origin main",
+              "sudo -u ubuntu git reset --hard origin/main",
+
+              "echo === Pull Docker image ===",
+              "docker compose --env-file .env.production pull",
+
+              "echo === Start application ===",
+              "docker compose --env-file .env.production up -d --wait",
+
+              "echo === Check application container ===",
+              "docker compose --env-file .env.production ps",
+
+              "echo === Check local backend health ===",
+              "curl --fail --silent --show-error http://127.0.0.1:4001/health/db",
+
+              "echo === Install Nginx configuration ===",
+              "sudo install -m 644 nginx/devsecops-api.conf /etc/nginx/sites-available/devsecops-api",
+              "sudo ln -sfn /etc/nginx/sites-available/devsecops-api /etc/nginx/sites-enabled/devsecops-api",
+
+              "echo === Verify Let's Encrypt certificate ===",
+              "sudo test -f /etc/letsencrypt/live/${DOMAIN}/fullchain.pem",
+              "sudo test -f /etc/letsencrypt/live/${DOMAIN}/privkey.pem",
+
+              "echo === Validate Nginx configuration ===",
+              "sudo nginx -t",
+
+              "echo === Reload Nginx ===",
+              "sudo systemctl reload nginx",
+
+              "echo === Check Nginx listeners ===",
+              "sudo ss -lntp | grep -E \":80|:443\"",
+
+              "echo === Check HTTPS health endpoint ===",
+              "curl --fail --silent --show-error https://${DOMAIN}/health/db",
+
+              "echo === Check HTTP to HTTPS redirect ===",
+              "HTTP_STATUS=$(curl -s -o /dev/null -w \"%{http_code}\" http://${DOMAIN}/health/db)",
+              "HTTP_LOCATION=$(curl -s -I http://${DOMAIN}/health/db | grep -i '^location:' | tr -d '\\r')",
+              "echo \"HTTP status: ${HTTP_STATUS}\"",
+              "echo \"HTTP location: ${HTTP_LOCATION}\"",
+              "test \"${HTTP_STATUS}\" = \"301\"",
+              "echo \"${HTTP_LOCATION}\" | grep -q \"https://${DOMAIN}/health/db\"",
+
+              "echo === Deployment verification completed ==="
+            ]' \
             --query 'Command.CommandId' \
             --output text)
 
-          echo "SSM Command ID: $COMMAND_ID"
+          echo "SSM Command ID: ${COMMAND_ID}"
 
           for i in {1..30}; do
             STATUS=$(aws ssm get-command-invocation \
-              --command-id "$COMMAND_ID" \
-              --instance-id i-0ca2b3a3d02304351 \
+              --command-id "${COMMAND_ID}" \
+              --instance-id "${EC2_INSTANCE_ID}" \
               --query 'Status' \
               --output text)
 
-            echo "SSM status: $STATUS"
+            echo "SSM status: ${STATUS}"
 
-            case "$STATUS" in
+            case "${STATUS}" in
               Success)
-                exit 0
+                break
                 ;;
               Failed|Cancelled|TimedOut)
                 echo "Deployment failed"
                 aws ssm get-command-invocation \
-                  --command-id "$COMMAND_ID" \
-                  --instance-id i-0ca2b3a3d02304351
+                  --command-id "${COMMAND_ID}" \
+                  --instance-id "${EC2_INSTANCE_ID}"
                 exit 1
                 ;;
             esac
@@ -99,5 +142,25 @@ jobs:
             sleep 5
           done
 
-          echo "Deployment did not finish within the expected time"
-          exit 1
+          if [ "${STATUS}" != "Success" ]; then
+            echo "Deployment did not finish within the expected time"
+            exit 1
+          fi
+
+          echo "=== SSM command output ==="
+
+          aws ssm get-command-invocation \
+            --command-id "${COMMAND_ID}" \
+            --instance-id "${EC2_INSTANCE_ID}" \
+            --query 'StandardOutputContent' \
+            --output text
+
+          echo "=== SSM command error output ==="
+
+          aws ssm get-command-invocation \
+            --command-id "${COMMAND_ID}" \
+            --instance-id "${EC2_INSTANCE_ID}" \
+            --query 'StandardErrorContent' \
+            --output text
+
+          echo "Deployment completed successfully."
