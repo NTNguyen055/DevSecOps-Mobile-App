@@ -25,14 +25,13 @@ env:
 
 jobs:
   deploy:
-    name: Deploy application to EC2
-    runs-on: ubuntu-latest
-
-    # Only deploy automatically when Security Scan succeeded.
-    # workflow_dispatch can still be used manually.
+    name: Deploy to EC2
     if: >
-      github.event_name == 'workflow_dispatch' ||
-      github.event.workflow_run.conclusion == 'success'
+      (github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
@@ -63,14 +62,15 @@ jobs:
             --comment "Deploy DevSecOps Mobile App" \
             --parameters commands='[
               "set -e",
-              "cd /opt/DevSecOps-Mobile-App",
+              "export DOMAIN=${{ env.DOMAIN }}",
+              "export DOCKER_IMAGE=${{ steps.image.outputs.image }}",
 
               "echo === Sync repository ===",
-              "git fetch origin main",
-              "git reset --hard origin/main",
+              "cd /home/ubuntu/app",
+              "sudo -u ubuntu git fetch origin main",
+              "sudo -u ubuntu git reset --hard origin/main",
 
               "echo === Pull Docker image ===",
-              "export DOCKER_IMAGE=${{ steps.image.outputs.image }}",
               "docker compose --env-file .env.production pull",
 
               "echo === Start application ===",
@@ -83,8 +83,8 @@ jobs:
               "curl --fail --silent --show-error http://127.0.0.1:4001/health/db",
 
               "echo === Install Nginx configuration ===",
-              "sudo cp nginx/devsecops-api.conf /etc/nginx/sites-available/devsecops-api",
-              "sudo ln -sf /etc/nginx/sites-available/devsecops-api /etc/nginx/sites-enabled/devsecops-api",
+              "sudo install -m 644 nginx/devsecops-api.conf /etc/nginx/sites-available/devsecops-api",
+              "sudo ln -sfn /etc/nginx/sites-available/devsecops-api /etc/nginx/sites-enabled/devsecops-api",
 
               "echo === Verify Let's Encrypt certificate ===",
               "sudo test -f /etc/letsencrypt/live/${DOMAIN}/fullchain.pem",
@@ -117,9 +117,35 @@ jobs:
 
           echo "SSM Command ID: ${COMMAND_ID}"
 
-          aws ssm wait command-executed \
-            --command-id "${COMMAND_ID}" \
-            --instance-id "${EC2_INSTANCE_ID}"
+          for i in {1..30}; do
+            STATUS=$(aws ssm get-command-invocation \
+              --command-id "${COMMAND_ID}" \
+              --instance-id "${EC2_INSTANCE_ID}" \
+              --query 'Status' \
+              --output text)
+
+            echo "SSM status: ${STATUS}"
+
+            case "${STATUS}" in
+              Success)
+                break
+                ;;
+              Failed|Cancelled|TimedOut)
+                echo "Deployment failed"
+                aws ssm get-command-invocation \
+                  --command-id "${COMMAND_ID}" \
+                  --instance-id "${EC2_INSTANCE_ID}"
+                exit 1
+                ;;
+            esac
+
+            sleep 5
+          done
+
+          if [ "${STATUS}" != "Success" ]; then
+            echo "Deployment did not finish within the expected time"
+            exit 1
+          fi
 
           echo "=== SSM command output ==="
 
@@ -136,18 +162,5 @@ jobs:
             --instance-id "${EC2_INSTANCE_ID}" \
             --query 'StandardErrorContent' \
             --output text
-
-          STATUS=$(aws ssm get-command-invocation \
-            --command-id "${COMMAND_ID}" \
-            --instance-id "${EC2_INSTANCE_ID}" \
-            --query 'Status' \
-            --output text)
-
-          echo "SSM Status: ${STATUS}"
-
-          if [ "${STATUS}" != "Success" ]; then
-            echo "Deployment failed."
-            exit 1
-          fi
 
           echo "Deployment completed successfully."
