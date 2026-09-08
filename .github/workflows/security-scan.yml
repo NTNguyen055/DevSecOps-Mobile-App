@@ -103,12 +103,36 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  npm-audit:
+    name: Software Composition Analysis (npm audit)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      # Backend / API dependencies
+      - name: Install backend dependencies
+        run: npm ci --no-audit
+
+      - name: Audit backend dependencies
+        run: npm audit --audit-level=high
+
+      # Mobile client dependencies
+      - name: Install mobile client dependencies
+        working-directory: client
+        run: npm ci --no-audit
+
+      - name: Audit mobile client dependencies
+        working-directory: client
+        run: npm audit --audit-level=high
+
   docker-publish:
     name: Publish Docker Image
     needs:
       - gitleaks
       - trivy-fs
       - trivy-docker
+      - npm-audit
     runs-on: ubuntu-latest
 
     if: github.event_name == 'push' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')
