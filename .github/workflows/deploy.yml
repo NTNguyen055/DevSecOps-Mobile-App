@@ -86,7 +86,7 @@ jobs:
               "sudo install -m 644 nginx/devsecops-api.conf /etc/nginx/sites-available/devsecops-api",
               "sudo ln -sfn /etc/nginx/sites-available/devsecops-api /etc/nginx/sites-enabled/devsecops-api",
 
-              "echo === Verify Let's Encrypt certificate ===",
+              "echo === Verify TLS certificate ===",
               "sudo test -f /etc/letsencrypt/live/${DOMAIN}/fullchain.pem",
               "sudo test -f /etc/letsencrypt/live/${DOMAIN}/privkey.pem",
 
@@ -104,7 +104,7 @@ jobs:
 
               "echo === Check HTTP to HTTPS redirect ===",
               "HTTP_STATUS=$(curl -s -o /dev/null -w \"%{http_code}\" http://${DOMAIN}/health/db)",
-              "HTTP_LOCATION=$(curl -s -I http://${DOMAIN}/health/db | grep -i \"^location:\" | tr -d '\\r')",
+              "HTTP_LOCATION=$(curl -s -I http://${DOMAIN}/health/db | grep -i \"^location:\" | tr -d \"\\r\")",
               "echo \"HTTP status: ${HTTP_STATUS}\"",
               "echo \"HTTP location: ${HTTP_LOCATION}\"",
               "test \"${HTTP_STATUS}\" = \"301\"",
