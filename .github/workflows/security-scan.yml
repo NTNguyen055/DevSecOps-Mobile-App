@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main, develop]
   push:
-    branches: [main, develop, feature/add-sonarqube-sast]
+    branches: [main, develop]
   schedule:
     # Quét lại toàn bộ mỗi thứ Hai 03:00 UTC để bắt CVE mới phát hiện sau này
     - cron: '0 3 * * 1'
@@ -129,6 +129,7 @@ jobs:
   sonarqube:
     name: SAST (SonarQube)
     runs-on: [self-hosted, Linux, X64, devsecops-tooling]
+
     steps:
       - name: Checkout source code
         uses: actions/checkout@v6
@@ -137,6 +138,10 @@ jobs:
 
       - name: Run SonarQube analysis
         uses: SonarSource/sonarqube-scan-action@v8.1.0
+        with:
+          args: >
+            -Dsonar.qualitygate.wait=true
+            -Dsonar.qualitygate.timeout=300
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
@@ -148,6 +153,7 @@ jobs:
       - trivy-fs
       - trivy-docker
       - npm-audit
+      - sonarqube
     runs-on: ubuntu-latest
 
     if: github.event_name == 'push' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')
