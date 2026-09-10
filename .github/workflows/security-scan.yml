@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main, develop]
   push:
-    branches: [main, develop]
+    branches: [main, develop, feature/add-sonarqube-sast]
   schedule:
     # Quét lại toàn bộ mỗi thứ Hai 03:00 UTC để bắt CVE mới phát hiện sau này
     - cron: '0 3 * * 1'
@@ -103,12 +103,51 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  npm-audit:
+    name: Software Composition Analysis (npm audit)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      # Backend / API dependencies
+      - name: Install backend dependencies
+        run: npm ci --no-audit
+
+      - name: Audit backend dependencies
+        run: npm audit --audit-level=high
+
+      # Mobile client dependencies
+      - name: Install mobile client dependencies
+        working-directory: client
+        run: npm ci --no-audit
+
+      - name: Audit mobile client dependencies
+        working-directory: client
+        run: npm audit --audit-level=high
+
+  sonarqube:
+    name: SAST (SonarQube)
+    runs-on: [self-hosted, Linux, X64, devsecops-tooling]
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Run SonarQube analysis
+        uses: SonarSource/sonarqube-scan-action@v8.1.0
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+
   docker-publish:
     name: Publish Docker Image
     needs:
       - gitleaks
       - trivy-fs
       - trivy-docker
+      - npm-audit
     runs-on: ubuntu-latest
 
     if: github.event_name == 'push' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')
