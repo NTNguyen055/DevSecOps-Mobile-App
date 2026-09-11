@@ -23,7 +23,7 @@ const requireAuth = (req, res, next) => {
     req.user = decodedUser;
 
     next();
-  } catch (err) {
+  } catch {
     res.status(401).json({
       message: 'Invalid or expired token'
     });

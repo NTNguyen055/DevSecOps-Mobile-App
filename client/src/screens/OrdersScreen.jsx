@@ -35,7 +35,7 @@ function OrderCard({ order }) {
         <View key={item.id} style={styles.itemRow}>
           <Text style={styles.itemName} numberOfLines={1}>{item.name || `Product #${item.product_id}`}</Text>
           <Text style={styles.itemMeta}>
-            x{item.quantity}  ·  ${parseFloat(item.price_at_purchase).toFixed(2)}
+            x{item.quantity}  ·  ${Number.parseFloat(item.price_at_purchase).toFixed(2)}
           </Text>
         </View>
       ))}
@@ -46,7 +46,7 @@ function OrderCard({ order }) {
             year: 'numeric', month: 'short', day: 'numeric',
           })}
         </Text>
-        <Text style={styles.total}>${parseFloat(order.total).toFixed(2)}</Text>
+        <Text style={styles.total}>${Number.parseFloat(order.total).toFixed(2)}</Text>
       </View>
     </View>
   );

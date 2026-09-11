@@ -15,7 +15,7 @@ export default function ProductCard({ product, onPress }) {
 
       <View style={styles.info}>
         <Text style={styles.name} numberOfLines={2}>{product.name}</Text>
-        <Text style={styles.price}>${parseFloat(product.price).toFixed(2)}</Text>
+        <Text style={styles.price}>${Number.parseFloat(product.price).toFixed(2)}</Text>
 
         <View style={[styles.stockBadge, inStock ? styles.stockIn : styles.stockOut]}>
           <Text style={styles.stockText}>{inStock ? 'In Stock' : 'Out of Stock'}</Text>

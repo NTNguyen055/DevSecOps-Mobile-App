@@ -70,3 +70,42 @@ jobs:
       - name: Show backend logs on failure
         if: failure()
         run: cat server.log
+
+  lint:
+    name: Lint (backend)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install backend deps
+        run: npm ci --no-audit
+
+      - name: Run backend lint
+        run: npm run lint
+
+  lint-client:
+    name: Lint (mobile client)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install mobile client deps
+        working-directory: client
+        run: npm ci --no-audit
+
+      - name: Run mobile client lint
+        working-directory: client
+        run: npm run lint
