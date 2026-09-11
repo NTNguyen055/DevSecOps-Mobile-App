@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Pressable,
   RefreshControl,
   StyleSheet,
   Text,
@@ -25,7 +24,7 @@ export default function ProductsScreen({ navigation }) {
       const data = await getProducts();
       setProducts(data);
       setFiltered(data);
-    } catch (err) {
+    } catch {
       Alert.alert('Error', 'Could not load products.');
     } finally {
       setLoading(false);

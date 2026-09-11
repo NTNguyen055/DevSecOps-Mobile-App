@@ -84,7 +84,7 @@ export default function ProductDetailScreen({ route }) {
         </View>
 
         <Text style={styles.name}>{product.name}</Text>
-        <Text style={styles.price}>${parseFloat(product.price).toFixed(2)}</Text>
+        <Text style={styles.price}>${Number.parseFloat(product.price).toFixed(2)}</Text>
         <Text style={styles.description}>{product.description || 'No description available.'}</Text>
 
         {/* Quantity selector */}
