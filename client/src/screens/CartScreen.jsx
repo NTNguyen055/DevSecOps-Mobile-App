@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
@@ -86,7 +86,7 @@ export default function CartScreen() {
   }
 
   const items = cart?.items || [];
-  const total = items.reduce((sum, item) => sum + parseFloat(item.price) * item.quantity, 0);
+  const total = items.reduce((sum, item) => sum + Number.parseFloat(item.price) * item.quantity, 0);
 
   if (loading) {
     return (

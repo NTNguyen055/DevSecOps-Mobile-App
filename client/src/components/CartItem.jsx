@@ -44,7 +44,7 @@ export default function CartItem({ item, userId, token, onRefresh }) {
     ]);
   }
 
-  const subtotal = parseFloat(item.price) * item.quantity;
+  const subtotal = Number.parseFloat(item.price) * item.quantity;
 
   return (
     <View style={styles.card}>
@@ -54,7 +54,7 @@ export default function CartItem({ item, userId, token, onRefresh }) {
 
       <View style={styles.info}>
         <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
-        <Text style={styles.unitPrice}>${parseFloat(item.price).toFixed(2)} each</Text>
+        <Text style={styles.unitPrice}>${Number.parseFloat(item.price).toFixed(2)} each</Text>
 
         <View style={styles.controls}>
           <Pressable style={styles.qtyBtn} onPress={() => changeQty(-1)} disabled={loading}>

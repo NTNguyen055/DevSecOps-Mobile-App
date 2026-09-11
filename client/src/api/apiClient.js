@@ -1,11 +1,11 @@
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:4001';
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
 
 async function request(path, options = {}) {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
-      ...(options.headers || {}),
+      ...(options.headers),
     },
   });
 

@@ -1,11 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
-console.log('AsyncStorage:', AsyncStorage);
-console.log('NativeModule:', AsyncStorage?.getItem);
-
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getCurrentUser, loginUser } from '../api/apiClient';
 import { AuthContext } from './authContext';
+
+console.log('AsyncStorage:', AsyncStorage);
+console.log('NativeModule:', AsyncStorage?.getItem);
 
 const TOKEN_KEY = 'ecommerce_token';
 const USER_KEY = 'ecommerce_user';
