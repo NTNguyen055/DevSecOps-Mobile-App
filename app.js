@@ -13,6 +13,7 @@ const YAML = require('yamljs');
 const swaggerDocument = YAML.load('./docs/openapi.yaml');
 
 const app = express();
+app.disable('x-powered-by');
 
 // Mobile app (React Native/Expo) does not have a fixed browser origin.
 // Allow all origins in development; set CLIENT_ORIGIN=* or specific IPs in production.
