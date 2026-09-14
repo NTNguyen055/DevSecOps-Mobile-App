@@ -236,15 +236,17 @@ jobs:
 
       - name: Run OWASP ZAP DAST
         id: zap
-        if: steps.deploy.outcome == 'success'
         shell: bash
         run: |
           set +e
 
           echo "=== Starting OWASP ZAP Baseline Scan ==="
 
+          mkdir -p zap-reports
+          chmod 777 zap-reports
+
           docker run --rm -t \
-            -v "$(pwd):/zap/wrk/:rw" \
+            -v "$(pwd)/zap-reports:/zap/wrk/:rw" \
             ghcr.io/zaproxy/zaproxy:stable \
             zap-baseline.py \
             -t "https://${DOMAIN}" \
@@ -279,14 +281,14 @@ jobs:
 
       - name: Upload OWASP ZAP reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: owasp-zap-dast-report
           path: |
-            zap-baseline-report.html
-            zap-baseline-report.json
-            zap-baseline-report.xml
-          if-no-files-found: warn
+            zap-reports/zap-baseline-report.html
+            zap-reports/zap-baseline-report.json
+            zap-reports/zap-baseline-report.xml
+          if-no-files-found: error
           retention-days: 30
 
       - name: Evaluate OWASP ZAP result
