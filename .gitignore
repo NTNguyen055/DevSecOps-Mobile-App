@@ -75,3 +75,7 @@ temp/
 
 # Render / deployment local files
 .render/
+
+# OWASP ZAP reports
+zap-baseline-report.html
+zap.yaml
