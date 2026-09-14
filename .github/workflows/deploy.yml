@@ -53,6 +53,74 @@ jobs:
             echo "image=${DOCKER_IMAGE}:${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Capture previous production image
+        id: previous
+        shell: bash
+        run: |
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "${EC2_INSTANCE_ID}" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Capture previous production image before deployment" \
+            --parameters commands='[
+              "cd /home/ubuntu/app",
+              "PREVIOUS_IMAGE=$(docker inspect -f '\''{{.Config.Image}}'\'' devsecops-api 2>/dev/null || true)",
+              "echo \"Previous image: ${PREVIOUS_IMAGE}\"",
+              "if [ -z \"${PREVIOUS_IMAGE}\" ]; then echo \"ERROR: Previous production image not found.\"; exit 1; fi",
+              "echo \"PREVIOUS_IMAGE=${PREVIOUS_IMAGE}\""
+            ]' \
+            --query 'Command.CommandId' \
+            --output text)
+
+          echo "SSM Command ID: ${COMMAND_ID}"
+
+          for i in {1..30}; do
+            STATUS=$(aws ssm get-command-invocation \
+              --command-id "${COMMAND_ID}" \
+              --instance-id "${EC2_INSTANCE_ID}" \
+              --query 'Status' \
+              --output text)
+
+            echo "SSM status: ${STATUS}"
+
+            case "${STATUS}" in
+              Success)
+                break
+                ;;
+              Failed|Cancelled|TimedOut)
+                echo "Failed to capture previous production image"
+                aws ssm get-command-invocation \
+                  --command-id "${COMMAND_ID}" \
+                  --instance-id "${EC2_INSTANCE_ID}"
+                exit 1
+                ;;
+            esac
+
+            sleep 5
+          done
+
+          if [ "${STATUS}" != "Success" ]; then
+            echo "Previous image detection timed out"
+            exit 1
+          fi
+
+          OUTPUT=$(aws ssm get-command-invocation \
+            --command-id "${COMMAND_ID}" \
+            --instance-id "${EC2_INSTANCE_ID}" \
+            --query 'StandardOutputContent' \
+            --output text)
+
+          echo "${OUTPUT}"
+
+          PREVIOUS_IMAGE=$(echo "${OUTPUT}" | grep '^PREVIOUS_IMAGE=' | tail -1 | cut -d'=' -f2-)
+
+          if [ -z "${PREVIOUS_IMAGE}" ]; then
+            echo "ERROR: Previous production image could not be determined."
+            exit 1
+          fi
+
+          echo "Previous production image: ${PREVIOUS_IMAGE}"
+          echo "previous_image=${PREVIOUS_IMAGE}" >> "$GITHUB_OUTPUT"
+
       - name: Deploy application via AWS SSM
         id: deploy
         shell: bash
@@ -66,13 +134,8 @@ jobs:
               "export DOMAIN=${{ env.DOMAIN }}",
               "export DOCKER_IMAGE=${{ steps.image.outputs.image }}",
 
-              "echo === Detect previous production image ===",
-              "cd /home/ubuntu/app",
-              "PREVIOUS_IMAGE=$(docker inspect -f '\''{{.Config.Image}}'\'' devsecops-api 2>/dev/null || true)",
-              "echo \"Previous image: ${PREVIOUS_IMAGE}\"",
-              "echo \"PREVIOUS_IMAGE=${PREVIOUS_IMAGE}\"",
-
               "echo === Sync repository ===",
+              "cd /home/ubuntu/app",
               "sudo -u ubuntu git fetch origin main",
               "sudo -u ubuntu git reset --hard origin/main",
 
@@ -155,23 +218,11 @@ jobs:
 
           echo "=== SSM command output ==="
 
-          OUTPUT=$(aws ssm get-command-invocation \
+          aws ssm get-command-invocation \
             --command-id "${COMMAND_ID}" \
             --instance-id "${EC2_INSTANCE_ID}" \
             --query 'StandardOutputContent' \
-            --output text)
-
-          echo "${OUTPUT}"
-
-          PREVIOUS_IMAGE=$(echo "${OUTPUT}" | grep '^PREVIOUS_IMAGE=' | tail -1 | cut -d'=' -f2-)
-
-          if [ -z "${PREVIOUS_IMAGE}" ]; then
-            echo "ERROR: Previous production image could not be determined."
-            exit 1
-          fi
-
-          echo "Previous production image: ${PREVIOUS_IMAGE}"
-          echo "previous_image=${PREVIOUS_IMAGE}" >> "$GITHUB_OUTPUT"
+            --output text
 
           echo "=== SSM command error output ==="
 
@@ -185,6 +236,7 @@ jobs:
 
       - name: Run OWASP ZAP DAST
         id: zap
+        if: steps.deploy.outcome == 'success'
         shell: bash
         run: |
           set +e
@@ -238,7 +290,7 @@ jobs:
           retention-days: 30
 
       - name: Evaluate OWASP ZAP result
-        if: always()
+        if: always() && steps.deploy.outcome == 'success'
         shell: bash
         run: |
           ZAP_STATUS="${{ steps.zap.outputs.status }}"
@@ -268,18 +320,23 @@ jobs:
           esac
 
       - name: Rollback production deployment
-        if: always() && steps.zap.outputs.status == '1'
+        if: always() && (steps.deploy.outcome == 'failure' || steps.zap.outputs.status == '1' || steps.zap.outputs.status == '3')
         shell: bash
         run: |
-          PREVIOUS_IMAGE="${{ steps.deploy.outputs.previous_image }}"
+          PREVIOUS_IMAGE="${{ steps.previous.outputs.previous_image }}"
 
           echo "=== Starting automatic rollback ==="
           echo "Previous image: ${PREVIOUS_IMAGE}"
 
+          if [ -z "${PREVIOUS_IMAGE}" ]; then
+            echo "ERROR: Previous image is unavailable. Rollback cannot continue."
+            exit 1
+          fi
+
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "${EC2_INSTANCE_ID}" \
             --document-name "AWS-RunShellScript" \
-            --comment "Rollback DevSecOps Mobile App after OWASP ZAP failure" \
+            --comment "Rollback DevSecOps Mobile App after CD failure" \
             --parameters commands='[
               "set -e",
               "cd /home/ubuntu/app",
