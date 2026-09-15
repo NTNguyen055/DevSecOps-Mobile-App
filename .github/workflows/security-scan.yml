@@ -298,3 +298,134 @@ jobs:
         run: |
           docker push ntnguyen055/devsecops-mobile-app:${{ steps.docker-tag.outputs.tag }}
           docker push ntnguyen055/devsecops-mobile-app:${{ github.sha }}
+
+  telegram-notification:
+    name: Telegram Security Scan Notification
+    needs:
+      - gitleaks
+      - trivy-fs
+      - trivy-docker
+      - npm-audit
+      - sonarqube
+      - docker-publish
+
+    runs-on: ubuntu-latest
+
+    # Chỉ thông báo khi push vào main.
+    # always() để vẫn gửi FAILED nếu một job security thất bại.
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Determine Security Scan status
+        id: status
+        run: |
+          if [[ "${{ needs.gitleaks.result }}" == "failure" || \
+                "${{ needs.gitleaks.result }}" == "cancelled" || \
+                "${{ needs.trivy-fs.result }}" == "failure" || \
+                "${{ needs.trivy-fs.result }}" == "cancelled" || \
+                "${{ needs.trivy-docker.result }}" == "failure" || \
+                "${{ needs.trivy-docker.result }}" == "cancelled" || \
+                "${{ needs.npm-audit.result }}" == "failure" || \
+                "${{ needs.npm-audit.result }}" == "cancelled" || \
+                "${{ needs.sonarqube.result }}" == "failure" || \
+                "${{ needs.sonarqube.result }}" == "cancelled" || \
+                "${{ needs.docker-publish.result }}" == "failure" || \
+                "${{ needs.docker-publish.result }}" == "cancelled" ]]; then
+            echo "status=FAILED" >> "$GITHUB_OUTPUT"
+          else
+            echo "status=PASSED" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download Trivy filesystem report
+        if: always()
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: trivy-fs-report
+          path: telegram-reports/trivy-fs
+
+      - name: Download Trivy image report
+        if: always()
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: trivy-image-report
+          path: telegram-reports/trivy-image
+
+      - name: Download backend npm audit report
+        if: always()
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: npm-audit-backend-report
+          path: telegram-reports/npm-audit-backend
+
+      - name: Download mobile client npm audit report
+        if: always()
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: npm-audit-client-report
+          path: telegram-reports/npm-audit-client
+
+      - name: Send Security Scan status to Telegram
+        if: always()
+        continue-on-error: true
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SECURITY_STATUS: ${{ steps.status.outputs.status }}
+        run: |
+          MESSAGE=$(cat <<EOF
+          Security Scan
+
+          Status: ${SECURITY_STATUS}
+
+          Repository: ${GITHUB_REPOSITORY}
+          Branch: ${GITHUB_REF_NAME}
+          Commit: ${GITHUB_SHA}
+          Actor: ${GITHUB_ACTOR}
+
+          Results:
+          • Gitleaks: ${{ needs.gitleaks.result }}
+          • Trivy filesystem: ${{ needs.trivy-fs.result }}
+          • Trivy image: ${{ needs.trivy-docker.result }}
+          • npm audit: ${{ needs.npm-audit.result }}
+          • SonarQube SAST: ${{ needs.sonarqube.result }}
+          • Docker publish: ${{ needs.docker-publish.result }}
+          EOF
+          )
+
+          curl --fail --silent --show-error \
+            --request POST \
+            --url "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --form-string "chat_id=${TELEGRAM_CHAT_ID}" \
+            --form-string "text=${MESSAGE}"
+
+      - name: Send security HTML reports to Telegram
+        if: always()
+        continue-on-error: true
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          REPORTS=(
+            "telegram-reports/npm-audit-backend/npm-audit-backend.html"
+            "telegram-reports/npm-audit-client/npm-audit-client.html"
+            "telegram-reports/trivy-fs/trivy-fs-report.html"
+            "telegram-reports/trivy-image/trivy-image-report.html"
+          )
+
+          for REPORT in "${REPORTS[@]}"; do
+            if [ -f "$REPORT" ]; then
+              echo "Sending report: $REPORT"
+
+              curl --fail --silent --show-error \
+                --request POST \
+                --url "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument" \
+                --form-string "chat_id=${TELEGRAM_CHAT_ID}" \
+                --form "document=@${REPORT}"
+            else
+              echo "Report not found: $REPORT"
+            fi
+          done
