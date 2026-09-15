@@ -471,17 +471,43 @@ jobs:
             ROLLBACK_RESULT="NOT REQUIRED"
           fi
           MESSAGE=$(cat <<EOF
-          Deploy Pipeline
+          PRODUCTION DEPLOYMENT
+
           Status: ${DEPLOY_STATUS}
+
           Repository: ${GITHUB_REPOSITORY}
           Branch: ${GITHUB_REF_NAME}
           Commit: ${COMMIT_SHA}
           Actor: ${GITHUB_ACTOR}
 
-          Results:
-          • Deployment: ${{ needs.deploy.outputs.deploy_status }}
-          • ZAP exit code: ${{ needs.deploy.outputs.zap_status }}
-          • Rollback: ${ROLLBACK_RESULT}
+          ----------------------------------------
+
+          DEPLOYMENT
+
+          Deployment: ${DEPLOY_STATUS}
+
+          ----------------------------------------
+
+          OWASP ZAP
+
+          Scan result: ${ZAP_RESULT}
+          Exit code: ${ZAP_STATUS}
+
+          ----------------------------------------
+
+          ROLLBACK
+
+          Status: ${ROLLBACK_STATUS}
+
+          ----------------------------------------
+
+          DAST REPORT
+
+          zap-baseline-report.html
+
+          ----------------------------------------
+
+          GitHub Actions
           EOF
           )
 
