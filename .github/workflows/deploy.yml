@@ -26,6 +26,11 @@ env:
 jobs:
   deploy:
     name: Deploy to EC2
+    outputs:
+      deploy_status: ${{ steps.deploy.outcome }}
+      zap_status: ${{ steps.zap.outputs.status }}
+      rollback_status: ${{ steps.rollback.outcome }}
+
     if: >
       (github.event_name == 'workflow_dispatch' &&
       github.ref == 'refs/heads/main') ||
@@ -322,6 +327,7 @@ jobs:
           esac
 
       - name: Rollback production deployment
+        id: rollback
         if: always() && (steps.deploy.outcome == 'failure' || steps.zap.outputs.status == '1' || steps.zap.outputs.status == '3')
         shell: bash
         run: |
@@ -414,3 +420,94 @@ jobs:
             --output text
 
           echo "Rollback completed successfully."
+
+  telegram-notification:
+    name: Telegram Deploy Notification
+    needs:
+      - deploy
+    runs-on: ubuntu-latest
+
+    if: >
+      always() &&
+      (
+        (github.event_name == 'workflow_dispatch' &&
+        github.ref == 'refs/heads/main') ||
+        (github.event_name == 'workflow_run' &&
+        github.event.workflow_run.head_branch == 'main' &&
+        github.event.workflow_run.conclusion == 'success')
+      )
+
+    steps:
+      - name: Determine Deploy status
+        id: status
+        shell: bash
+        run: |
+          if [ "${{ needs.deploy.result }}" = "success" ]; then
+            echo "status=PASSED" >> "$GITHUB_OUTPUT"
+          else
+            echo "status=FAILED" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download OWASP ZAP report
+        if: always()
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: owasp-zap-dast-report
+          path: telegram-reports/zap
+
+      - name: Send Deploy status to Telegram
+        if: always()
+        continue-on-error: true
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          DEPLOY_STATUS: ${{ steps.status.outputs.status }}
+          COMMIT_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          ROLLBACK_RESULT="${{ needs.deploy.outputs.rollback_status }}"
+
+          if [ "$ROLLBACK_RESULT" = "skipped" ]; then
+            ROLLBACK_RESULT="NOT REQUIRED"
+          fi
+          MESSAGE=$(cat <<EOF
+          Deploy Pipeline
+          Status: ${DEPLOY_STATUS}
+          Repository: ${GITHUB_REPOSITORY}
+          Branch: ${GITHUB_REF_NAME}
+          Commit: ${COMMIT_SHA}
+          Actor: ${GITHUB_ACTOR}
+
+          Results:
+          • Deployment: ${{ needs.deploy.outputs.deploy_status }}
+          • ZAP exit code: ${{ needs.deploy.outputs.zap_status }}
+          • Rollback: ${ROLLBACK_RESULT}
+          EOF
+          )
+
+          curl --fail --silent --show-error \
+            --request POST \
+            --url "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --form-string "chat_id=${TELEGRAM_CHAT_ID}" \
+            --form-string "text=${MESSAGE}"
+
+      - name: Send OWASP ZAP HTML report to Telegram
+        if: always()
+        continue-on-error: true
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          REPORT="telegram-reports/zap/zap-baseline-report.html"
+
+          if [ -f "$REPORT" ]; then
+            echo "Sending OWASP ZAP HTML report..."
+
+            curl --fail --silent --show-error \
+              --request POST \
+              --url "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument" \
+              --form-string "chat_id=${TELEGRAM_CHAT_ID}" \
+              --form "document=@${REPORT}"
+          else
+            echo "OWASP ZAP HTML report not found."
+          fi
