@@ -381,7 +381,7 @@ jobs:
           SECURITY_STATUS: ${{ steps.status.outputs.status }}
         run: |
           MESSAGE=$(cat <<EOF
-          Security Scan
+          SECURITY SCAN
 
           Status: ${SECURITY_STATUS}
 
@@ -390,13 +390,29 @@ jobs:
           Commit: ${GITHUB_SHA}
           Actor: ${GITHUB_ACTOR}
 
-          Results:
-          • Gitleaks: ${{ needs.gitleaks.result }}
-          • Trivy filesystem: ${{ needs.trivy-fs.result }}
-          • Trivy image: ${{ needs.trivy-docker.result }}
-          • npm audit: ${{ needs.npm-audit.result }}
-          • SonarQube SAST: ${{ needs.sonarqube.result }}
-          • Docker publish: ${{ needs.docker-publish.result }}
+          ----------------------------------------
+
+          SECURITY CHECKS
+
+          Gitleaks: ${{ needs.gitleaks.result }}
+          Trivy filesystem: ${{ needs.trivy-fs.result }}
+          Trivy image: ${{ needs.trivy-docker.result }}
+          npm audit: ${{ needs.npm-audit.result }}
+          SonarQube SAST: ${{ needs.sonarqube.result }}
+          Docker publish: ${{ needs.docker-publish.result }}
+
+          ----------------------------------------
+
+          SECURITY REPORTS
+
+          npm audit - Backend
+          npm audit - Mobile Client
+          Trivy - Filesystem
+          Trivy - Container Image
+
+          ----------------------------------------
+
+          GitHub Actions
           EOF
           )
 

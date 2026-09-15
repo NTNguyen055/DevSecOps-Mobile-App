@@ -143,16 +143,26 @@ jobs:
           CI_STATUS: ${{ steps.status.outputs.status }}
         run: |
           MESSAGE=$(cat <<EOF
-          🔧 CI Pipeline
+          CI PIPELINE
+
           Status: ${CI_STATUS}
+
           Repository: ${GITHUB_REPOSITORY}
           Branch: ${GITHUB_REF_NAME}
           Commit: ${GITHUB_SHA}
           Actor: ${GITHUB_ACTOR}
-          Results:
-          • Backend tests: ${{ needs.test.result }}
-          • Backend lint: ${{ needs.lint.result }}
-          • Mobile client lint: ${{ needs.lint-client.result }}
+
+          ----------------------------------------
+
+          RESULTS
+
+          Backend tests: ${{ needs.test.result }}
+          Backend lint: ${{ needs.lint.result }}
+          Mobile client lint: ${{ needs.lint-client.result }}
+
+          ----------------------------------------
+
+          GitHub Actions
           EOF
           )
 
