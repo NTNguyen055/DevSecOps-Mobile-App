@@ -105,6 +105,7 @@ jobs:
         with:
           sarif_file: 'trivy-image-results.sarif'
           category: 'trivy-image'
+
       - name: Generate Trivy image HTML report
         if: always()
         uses: aquasecurity/trivy-action@master
@@ -155,7 +156,30 @@ jobs:
         run: npm ci --no-audit
 
       - name: Audit backend dependencies
+        id: audit-backend
+        continue-on-error: true
         run: npm audit --audit-level=high
+
+      - name: Generate backend npm audit HTML report
+        if: always()
+        continue-on-error: true
+        run: |
+          npm audit --json > npm-audit-backend.json || true
+
+          npx --yes audit-export \
+            --path npm-audit-backend.html \
+            --title "Backend npm Audit Report" \
+            < npm-audit-backend.json
+
+      - name: Upload backend npm audit HTML report
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: npm-audit-backend-report
+          path: npm-audit-backend.html
+          if-no-files-found: error
+          retention-days: 30
 
       # Mobile client dependencies
       - name: Install mobile client dependencies
@@ -163,9 +187,43 @@ jobs:
         run: npm ci --no-audit
 
       - name: Audit mobile client dependencies
+        id: audit-client
+        continue-on-error: true
         working-directory: client
         run: npm audit --audit-level=high
 
+      - name: Generate mobile client npm audit HTML report
+        if: always()
+        continue-on-error: true
+        working-directory: client
+        run: |
+          npm audit --json > npm-audit-client.json || true
+
+          npx --yes audit-export \
+            --path npm-audit-client.html \
+            --title "Mobile Client npm Audit Report" \
+            < npm-audit-client.json
+
+      - name: Upload mobile client npm audit HTML report
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: npm-audit-client-report
+          path: client/npm-audit-client.html
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Enforce npm audit security gate
+        if: always()
+        run: |
+          if [ "${{ steps.audit-backend.outcome }}" = "failure" ] || \
+             [ "${{ steps.audit-client.outcome }}" = "failure" ]; then
+            echo "npm audit security gate failed"
+            exit 1
+          fi
+
+          echo "npm audit security gate passed"
   sonarqube:
     name: SAST (SonarQube)
     runs-on: [self-hosted, Linux, X64, devsecops-tooling]
