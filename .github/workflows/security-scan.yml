@@ -105,6 +105,25 @@ jobs:
         with:
           sarif_file: 'trivy-image-results.sarif'
           category: 'trivy-image'
+      - name: Generate Trivy image HTML report
+        if: always()
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'ntnguyen055/devsecops-mobile-app:${{ github.sha }}'
+          format: 'template'
+          template: '@contrib/html.tpl'
+          output: 'trivy-image-report.html'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
+
+      - name: Upload Trivy image HTML report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: trivy-image-report
+          path: trivy-image-report.html
+          if-no-files-found: error
+          retention-days: 30
 
       # Chỉ lưu image nếu security scan PASS.
       # Publish job sẽ sử dụng chính image artifact này.
