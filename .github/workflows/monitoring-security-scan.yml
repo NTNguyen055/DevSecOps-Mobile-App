@@ -1,0 +1,94 @@
+name: Monitoring Security Scan
+
+on:
+  pull_request:
+    paths:
+      - 'monitoring/**'
+      - '.github/workflows/monitoring-security-scan.yml'
+  push:
+    branches:
+      - develop
+      - main
+    paths:
+      - 'monitoring/**'
+      - '.github/workflows/monitoring-security-scan.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  gitleaks:
+    name: Secret Scanning (Gitleaks)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  trivy-config:
+    name: Configuration Scan (Trivy)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Trivy configuration scan
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: config
+          scan-ref: monitoring
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+          format: table
+
+  trivy-images:
+    name: Monitoring Image Scan (Trivy)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Scan Prometheus
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: prom/prometheus:v3.5.0
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '1'
+          format: table
+
+      - name: Scan Grafana
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: grafana/grafana:12.1.1
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '1'
+          format: table
+
+      - name: Scan Node Exporter
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: prom/node-exporter:v1.9.1
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '1'
+          format: table
+
+      - name: Scan Docker Exporter
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ghcr.io/dlepaux/docker-exporter:latest
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '1'
+          format: table
