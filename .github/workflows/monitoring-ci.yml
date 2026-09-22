@@ -1,0 +1,42 @@
+name: Monitoring CI
+
+on:
+  pull_request:
+    paths:
+      - 'monitoring/**'
+      - '.github/workflows/monitoring-ci.yml'
+  push:
+    branches:
+      - develop
+      - main
+    paths:
+      - 'monitoring/**'
+      - '.github/workflows/monitoring-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate Monitoring Configuration
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Validate required files
+        run: |
+          test -f monitoring/docker-compose.yml
+          test -f monitoring/prometheus/prometheus.yml
+
+      - name: Validate Docker Compose
+        run: |
+          docker compose -f monitoring/docker-compose.yml config
+
+      - name: Validate Prometheus configuration
+        run: |
+          docker run --rm \
+            -v "$PWD/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro" \
+            prom/prometheus:v3.5.0 \
+            promtool check config /etc/prometheus/prometheus.yml
