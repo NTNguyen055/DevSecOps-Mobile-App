@@ -60,7 +60,7 @@ jobs:
       - name: Scan Prometheus
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: prom/prometheus:v3.5.0
+          image-ref: prom/prometheus:v3.14.0
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: '1'
@@ -69,7 +69,7 @@ jobs:
       - name: Scan Grafana
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: grafana/grafana:12.1.1
+          image-ref: grafana/grafana:13.2.2
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: '1'
@@ -78,7 +78,7 @@ jobs:
       - name: Scan Node Exporter
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: prom/node-exporter:v1.9.1
+          image-ref: prom/node-exporter:v1.12.1
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: '1'
