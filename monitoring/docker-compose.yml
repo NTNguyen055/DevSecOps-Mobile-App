@@ -1,6 +1,6 @@
 services:
   prometheus:
-    image: prom/prometheus:v3.5.0
+    image: prom/prometheus:v3.14.0
     container_name: monitoring-prometheus
     restart: unless-stopped
     command:
@@ -16,7 +16,7 @@ services:
       - docker-exporter
 
   node-exporter:
-    image: prom/node-exporter:v1.9.1
+    image: prom/node-exporter:v1.12.1
     container_name: monitoring-node-exporter
     restart: unless-stopped
     command:
@@ -38,7 +38,7 @@ services:
       - "127.0.0.1:9713:9713"
 
   grafana:
-    image: grafana/grafana:12.1.1
+    image: grafana/grafana:13.2.2
     container_name: monitoring-grafana
     restart: unless-stopped
     ports:
