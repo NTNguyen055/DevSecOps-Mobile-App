@@ -62,7 +62,7 @@ jobs:
             --arg dir "${MONITORING_DIR}" \
             '{
               commands: [
-                "set -euo pipefail",
+                "set -eu",
                 ("mkdir -p " + ($dir | @sh)),
                 ("TMP_DIR=$(mktemp -d)"),
                 ("mkdir -p \"$TMP_DIR/prometheus\""),
@@ -131,7 +131,7 @@ jobs:
 
           jq -n '{
             commands: [
-              "set -euo pipefail",
+              "set -eu",
               "cd /home/ubuntu/monitoring",
               "docker compose ps",
               "test \"$(docker inspect -f '\''{{.State.Status}}'\'' monitoring-prometheus)\" = \"running\"",
