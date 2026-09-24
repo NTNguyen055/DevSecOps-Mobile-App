@@ -1,0 +1,172 @@
+name: Deploy Monitoring to AWS EC2
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'monitoring/**'
+      - '.github/workflows/monitoring-deploy.yml'
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: monitoring-deployment
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-southeast-1
+  EC2_INSTANCE_ID: i-0ca2b3a3d02304351
+  MONITORING_DIR: /home/ubuntu/monitoring
+
+jobs:
+  deploy:
+    name: Deploy Monitoring Stack
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::900558045438:role/devsecops-github-actions-role
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Validate monitoring files
+        run: |
+          set -euo pipefail
+
+          test -f monitoring/docker-compose.yml
+          test -f monitoring/prometheus/prometheus.yml
+
+          docker compose \
+            -f monitoring/docker-compose.yml \
+            config
+
+      - name: Prepare SSM deployment parameters
+        run: |
+          set -euo pipefail
+
+          COMPOSE_B64=$(base64 -w 0 monitoring/docker-compose.yml)
+          PROMETHEUS_B64=$(base64 -w 0 monitoring/prometheus/prometheus.yml)
+
+          jq -n \
+            --arg compose "$COMPOSE_B64" \
+            --arg prometheus "$PROMETHEUS_B64" \
+            --arg dir "${MONITORING_DIR}" \
+            '{
+              commands: [
+                "set -euo pipefail",
+                ("mkdir -p " + ($dir | @sh)),
+                ("TMP_DIR=$(mktemp -d)"),
+                ("mkdir -p \"$TMP_DIR/prometheus\""),
+                ("printf %s " + ($compose | @sh) + " | base64 -d > \"$TMP_DIR/docker-compose.yml\""),
+                ("printf %s " + ($prometheus | @sh) + " | base64 -d > \"$TMP_DIR/prometheus/prometheus.yml\""),
+                ("docker compose -f \"$TMP_DIR/docker-compose.yml\" config"),
+                ("docker run --rm --entrypoint promtool -v \"$TMP_DIR/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro\" prom/prometheus:v3.14.0 check config /etc/prometheus/prometheus.yml"),
+                ("install -m 0644 \"$TMP_DIR/docker-compose.yml\" " + ($dir | @sh) + "/docker-compose.yml"),
+                ("install -m 0644 \"$TMP_DIR/prometheus/prometheus.yml\" " + ($dir | @sh) + "/prometheus/prometheus.yml"),
+                ("rm -rf \"$TMP_DIR\""),
+                ("cd " + ($dir | @sh)),
+                "docker compose config",
+                "docker compose pull",
+                "docker compose up -d --remove-orphans",
+                "docker compose ps"
+              ]
+            }' > ssm-parameters.json
+
+      - name: Deploy monitoring configuration to EC2
+        id: deploy
+        run: |
+          set -euo pipefail
+
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "${EC2_INSTANCE_ID}" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploy monitoring stack from GitHub Actions" \
+            --parameters file://ssm-parameters.json \
+            --query 'Command.CommandId' \
+            --output text)
+
+          echo "command_id=$COMMAND_ID" >> "$GITHUB_OUTPUT"
+          echo "SSM Command ID: $COMMAND_ID"
+
+      - name: Wait for deployment
+        run: |
+          set -euo pipefail
+
+          aws ssm wait command-executed \
+            --command-id "${{ steps.deploy.outputs.command_id }}" \
+            --instance-id "${EC2_INSTANCE_ID}"
+
+      - name: Verify deployment result
+        run: |
+          set -euo pipefail
+
+          STATUS=$(aws ssm get-command-invocation \
+            --command-id "${{ steps.deploy.outputs.command_id }}" \
+            --instance-id "${EC2_INSTANCE_ID}" \
+            --query 'Status' \
+            --output text)
+
+          echo "SSM deployment status: $STATUS"
+
+          aws ssm get-command-invocation \
+            --command-id "${{ steps.deploy.outputs.command_id }}" \
+            --instance-id "${EC2_INSTANCE_ID}" \
+            --query '{Output:StandardOutputContent,Error:StandardErrorContent}' \
+            --output json
+
+          test "$STATUS" = "Success"
+
+      - name: Verify monitoring containers and health
+        run: |
+          set -euo pipefail
+
+          jq -n '{
+            commands: [
+              "set -euo pipefail",
+              "cd /home/ubuntu/monitoring",
+              "docker compose ps",
+              "test \"$(docker inspect -f '\''{{.State.Status}}'\'' monitoring-prometheus)\" = \"running\"",
+              "test \"$(docker inspect -f '\''{{.State.Status}}'\'' monitoring-node-exporter)\" = \"running\"",
+              "test \"$(docker inspect -f '\''{{.State.Status}}'\'' monitoring-docker-exporter)\" = \"running\"",
+              "test \"$(docker inspect -f '\''{{.State.Status}}'\'' monitoring-grafana)\" = \"running\"",
+              "curl -fsS http://127.0.0.1:9090/-/ready",
+              "curl -fsS http://127.0.0.1:3000/api/health"
+            ]
+          }' > verify-parameters.json
+
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "${EC2_INSTANCE_ID}" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Verify monitoring stack" \
+            --parameters file://verify-parameters.json \
+            --query 'Command.CommandId' \
+            --output text)
+
+          echo "Verification SSM Command ID: $COMMAND_ID"
+
+          aws ssm wait command-executed \
+            --command-id "$COMMAND_ID" \
+            --instance-id "${EC2_INSTANCE_ID}"
+
+          STATUS=$(aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" \
+            --instance-id "${EC2_INSTANCE_ID}" \
+            --query 'Status' \
+            --output text)
+
+          aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" \
+            --instance-id "${EC2_INSTANCE_ID}" \
+            --query '{Output:StandardOutputContent,Error:StandardErrorContent}' \
+            --output json
+
+          test "$STATUS" = "Success"
