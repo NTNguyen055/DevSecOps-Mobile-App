@@ -1,0 +1,26 @@
+# Chu kỳ Prometheus thu thập (scrape) metrics từ các target
+global:
+  scrape_interval: 15s
+
+# Danh sách các nguồn metrics mà Prometheus sẽ thu thập
+scrape_configs:
+
+  # Thu thập metrics của chính Prometheus
+  - job_name: prometheus
+    static_configs:
+      - targets:
+          - prometheus:9090
+
+  # Thu thập metrics của máy chủ/EC2
+  # Node Exporter cung cấp CPU, RAM, Disk, Network,...
+  - job_name: node-exporter
+    static_configs:
+      - targets:
+          - node-exporter:9100
+
+  # Thu thập metrics liên quan đến các Docker container
+  # Docker Exporter cung cấp thông tin phục vụ giám sát container
+  - job_name: docker-exporter
+    static_configs:
+      - targets:
+          - docker-exporter:9713

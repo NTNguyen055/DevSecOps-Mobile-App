@@ -5,17 +5,47 @@ on:
     branches: [main, develop]
   push:
     branches: [main, develop]
-  schedule:
-    # Quét lại toàn bộ mỗi thứ Hai 03:00 UTC để bắt CVE mới phát hiện sau này
-    - cron: '0 3 * * 1'
 
 permissions:
   contents: read
   security-events: write # cần để upload SARIF lên tab Security
 
 jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      app: ${{ steps.filter.outputs.app }}
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed files
+        id: filter
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            HEAD="${{ github.event.pull_request.head.sha }}"
+          else
+            BASE="${{ github.event.before }}"
+            HEAD="${{ github.sha }}"
+          fi
+
+          echo "Changed files:"
+          git diff --name-only "$BASE" "$HEAD"
+
+          if git diff --name-only "$BASE" "$HEAD" | grep -qvE '^monitoring/|^\.github/workflows/monitoring-'; then
+            echo "app=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "app=false" >> "$GITHUB_OUTPUT"
+          fi
+
   gitleaks:
     name: Secret scanning (Gitleaks)
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -30,6 +60,8 @@ jobs:
 
   trivy-fs:
     name: Dependency scan (Trivy filesystem)
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -75,6 +107,8 @@ jobs:
 
   trivy-docker:
     name: Container Image Scan (Trivy)
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -146,6 +180,8 @@ jobs:
 
   npm-audit:
     name: Software Composition Analysis (npm audit)
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -230,6 +266,8 @@ jobs:
           echo "npm audit security gate passed"
   sonarqube:
     name: SAST (SonarQube)
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
     runs-on: [self-hosted, Linux, X64, devsecops-tooling]
 
     steps:
@@ -251,6 +289,7 @@ jobs:
   docker-publish:
     name: Publish Docker Image
     needs:
+      - changes
       - gitleaks
       - trivy-fs
       - trivy-docker
@@ -258,7 +297,10 @@ jobs:
       - sonarqube
     runs-on: ubuntu-latest
 
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')
+    if: >
+      needs.changes.outputs.app == 'true' &&
+      github.event_name == 'push' &&
+      (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')
 
     steps:
       - uses: actions/checkout@v6
@@ -306,6 +348,7 @@ jobs:
   telegram-notification:
     name: Telegram Security Scan Notification
     needs:
+      - changes
       - gitleaks
       - trivy-fs
       - trivy-docker
@@ -317,7 +360,11 @@ jobs:
 
     # Chỉ thông báo khi push vào main.
     # always() để vẫn gửi FAILED nếu một job security thất bại.
-    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: >
+      always() &&
+      needs.changes.outputs.app == 'true' &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main'
 
     steps:
       - name: Determine Security Scan status
