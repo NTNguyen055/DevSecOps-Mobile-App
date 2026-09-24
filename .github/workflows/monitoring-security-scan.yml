@@ -2,23 +2,52 @@ name: Monitoring Security Scan
 
 on:
   pull_request:
-    paths:
-      - 'monitoring/**'
-      - '.github/workflows/monitoring-security-scan.yml'
   push:
     branches:
       - develop
       - main
-    paths:
-      - 'monitoring/**'
-      - '.github/workflows/monitoring-security-scan.yml'
 
 permissions:
   contents: read
 
 jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+
+    outputs:
+      monitoring: ${{ steps.filter.outputs.monitoring }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed files
+        id: filter
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            HEAD="${{ github.event.pull_request.head.sha }}"
+          else
+            BASE="${{ github.event.before }}"
+            HEAD="${{ github.sha }}"
+          fi
+
+          echo "Changed files:"
+          git diff --name-only "$BASE" "$HEAD"
+
+          if git diff --name-only "$BASE" "$HEAD" | grep -qE '^monitoring/|^\.github/workflows/monitoring-security-scan\.yml$'; then
+            echo "monitoring=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "monitoring=false" >> "$GITHUB_OUTPUT"
+          fi
+
   gitleaks:
     name: Secret Scanning (Gitleaks)
+    needs: changes
+    if: needs.changes.outputs.monitoring == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -34,6 +63,8 @@ jobs:
 
   trivy-config:
     name: Configuration Scan (Trivy)
+    needs: changes
+    if: needs.changes.outputs.monitoring == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -51,6 +82,8 @@ jobs:
 
   trivy-images:
     name: Monitoring Image Scan (Trivy)
+    needs: changes
+    if: needs.changes.outputs.monitoring == 'true'
     runs-on: ubuntu-latest
 
     steps:
