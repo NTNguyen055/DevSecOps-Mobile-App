@@ -13,7 +13,7 @@ permissions:
 jobs:
   changes:
     name: Detect changes
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       app: ${{ steps.filter.outputs.app }}
 
@@ -46,7 +46,7 @@ jobs:
     name: Secret scanning (Gitleaks)
     needs: changes
     if: needs.changes.outputs.app == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@v6
@@ -62,7 +62,7 @@ jobs:
     name: Dependency scan (Trivy filesystem)
     needs: changes
     if: needs.changes.outputs.app == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@v6
@@ -109,7 +109,7 @@ jobs:
     name: Container Image Scan (Trivy)
     needs: changes
     if: needs.changes.outputs.app == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@v6
@@ -182,7 +182,7 @@ jobs:
     name: Software Composition Analysis (npm audit)
     needs: changes
     if: needs.changes.outputs.app == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@v6
@@ -295,7 +295,7 @@ jobs:
       - trivy-docker
       - npm-audit
       - sonarqube
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     if: >
       needs.changes.outputs.app == 'true' &&
@@ -356,7 +356,7 @@ jobs:
       - sonarqube
       - docker-publish
 
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     # Chỉ thông báo khi push vào main.
     # always() để vẫn gửi FAILED nếu một job security thất bại.
