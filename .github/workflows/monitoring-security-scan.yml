@@ -13,7 +13,7 @@ permissions:
 jobs:
   changes:
     name: Detect changes
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     outputs:
       monitoring: ${{ steps.filter.outputs.monitoring }}
@@ -48,7 +48,7 @@ jobs:
     name: Secret Scanning (Gitleaks)
     needs: changes
     if: needs.changes.outputs.monitoring == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout
@@ -65,7 +65,7 @@ jobs:
     name: Configuration Scan (Trivy)
     needs: changes
     if: needs.changes.outputs.monitoring == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout
@@ -84,7 +84,7 @@ jobs:
     name: Monitoring Image Scan (Trivy)
     needs: changes
     if: needs.changes.outputs.monitoring == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout
