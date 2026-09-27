@@ -44,6 +44,7 @@ jobs:
 
           test -f monitoring/docker-compose.yml
           test -f monitoring/prometheus/prometheus.yml
+          test -f monitoring/blackbox/blackbox.yml
 
           docker compose \
             -f monitoring/docker-compose.yml \
@@ -55,24 +56,37 @@ jobs:
 
           COMPOSE_B64=$(base64 -w 0 monitoring/docker-compose.yml)
           PROMETHEUS_B64=$(base64 -w 0 monitoring/prometheus/prometheus.yml)
+          BLACKBOX_B64=$(base64 -w 0 monitoring/blackbox/blackbox.yml)
 
           jq -n \
             --arg compose "$COMPOSE_B64" \
             --arg prometheus "$PROMETHEUS_B64" \
+            --arg blackbox "$BLACKBOX_B64" \
             --arg dir "${MONITORING_DIR}" \
             '{
               commands: [
                 "set -eu",
                 ("mkdir -p " + ($dir | @sh)),
                 ("TMP_DIR=$(mktemp -d)"),
-                ("mkdir -p \"$TMP_DIR/prometheus\""),
+                ("mkdir -p \"$TMP_DIR/prometheus\" \"$TMP_DIR/blackbox\""),
+
                 ("printf %s " + ($compose | @sh) + " | base64 -d > \"$TMP_DIR/docker-compose.yml\""),
                 ("printf %s " + ($prometheus | @sh) + " | base64 -d > \"$TMP_DIR/prometheus/prometheus.yml\""),
+                ("printf %s " + ($blackbox | @sh) + " | base64 -d > \"$TMP_DIR/blackbox/blackbox.yml\""),
+
                 ("docker compose -f \"$TMP_DIR/docker-compose.yml\" config"),
+
                 ("docker run --rm --entrypoint promtool -v \"$TMP_DIR/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro\" prom/prometheus:v3.14.0 check config /etc/prometheus/prometheus.yml"),
+
+                ("install -d -m 0755 " + ($dir | @sh) + "/prometheus"),
+                ("install -d -m 0755 " + ($dir | @sh) + "/blackbox"),
+
                 ("install -m 0644 \"$TMP_DIR/docker-compose.yml\" " + ($dir | @sh) + "/docker-compose.yml"),
                 ("install -m 0644 \"$TMP_DIR/prometheus/prometheus.yml\" " + ($dir | @sh) + "/prometheus/prometheus.yml"),
+                ("install -m 0644 \"$TMP_DIR/blackbox/blackbox.yml\" " + ($dir | @sh) + "/blackbox/blackbox.yml"),
+
                 ("rm -rf \"$TMP_DIR\""),
+
                 ("cd " + ($dir | @sh)),
                 "docker compose config",
                 "docker compose pull",
@@ -133,13 +147,23 @@ jobs:
             commands: [
               "set -eu",
               "cd /home/ubuntu/monitoring",
+
+              "test -f docker-compose.yml",
+              "test -f prometheus/prometheus.yml",
+              "test -f blackbox/blackbox.yml",
+
               "docker compose ps",
+
               "test \"$(docker inspect -f '\''{{.State.Status}}'\'' monitoring-prometheus)\" = \"running\"",
               "test \"$(docker inspect -f '\''{{.State.Status}}'\'' monitoring-node-exporter)\" = \"running\"",
               "test \"$(docker inspect -f '\''{{.State.Status}}'\'' monitoring-docker-exporter)\" = \"running\"",
+              "test \"$(docker inspect -f '\''{{.State.Status}}'\'' monitoring-blackbox-exporter)\" = \"running\"",
               "test \"$(docker inspect -f '\''{{.State.Status}}'\'' monitoring-grafana)\" = \"running\"",
+
               "curl -fsS http://127.0.0.1:9090/-/ready",
-              "curl -fsS http://127.0.0.1:3000/api/health"
+              "curl -fsS http://127.0.0.1:3000/api/health",
+
+              "curl -fsS '\''http://127.0.0.1:9115/probe?target=https://devsecops-mobile.duckdns.org/health/db&module=http_200'\'' | grep -q '\''probe_success 1'\''"
             ]
           }' > verify-parameters.json
 
