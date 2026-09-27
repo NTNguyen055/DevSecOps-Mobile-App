@@ -24,3 +24,24 @@ scrape_configs:
     static_configs:
       - targets:
           - docker-exporter:9713
+
+  # Kiểm tra HTTPS và khả năng truy cập của application
+  - job_name: blackbox-http
+    metrics_path: /probe
+    params:
+      module:
+        - http_200
+    static_configs:
+      - targets:
+          - https://devsecops-mobile.duckdns.org/health/db
+    relabel_configs:
+      - source_labels:
+          - __address__
+        target_label: __param_target
+
+      - source_labels:
+          - __param_target
+        target_label: instance
+
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
