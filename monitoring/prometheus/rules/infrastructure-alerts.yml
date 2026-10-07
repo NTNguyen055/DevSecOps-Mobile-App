@@ -1,0 +1,48 @@
+groups:
+  - name: infrastructure
+    rules:
+
+      - alert: NodeCPUHigh
+        expr: 100 * (1 - avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m]))) > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "EC2 CPU usage is high"
+          description: "EC2 CPU usage has been above 85% for more than 5 minutes."
+
+      - alert: NodeMemoryHigh
+        expr: 100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "EC2 memory usage is high"
+          description: "EC2 memory usage has been above 85% for more than 5 minutes."
+
+      - alert: NodeDiskUsageHigh
+        expr: 100 * (1 - node_filesystem_avail_bytes{mountpoint="/",fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{mountpoint="/",fstype!~"tmpfs|overlay"}) > 85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "EC2 disk usage is high"
+          description: "EC2 root filesystem usage has been above 85% for more than 10 minutes."
+
+      - alert: NodeExporterDown
+        expr: up{job="node-exporter"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Node Exporter is down"
+          description: "Prometheus cannot scrape Node Exporter for more than 2 minutes."
+
+      - alert: DockerExporterDown
+        expr: up{job="docker-exporter"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Docker Exporter is down"
+          description: "Prometheus cannot scrape Docker Exporter for more than 2 minutes."
