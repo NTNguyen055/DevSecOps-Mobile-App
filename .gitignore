@@ -79,3 +79,7 @@ temp/
 # OWASP ZAP reports
 zap-baseline-report.html
 zap.yaml
+
+# Python
+__pycache__/
+*.py[cod]

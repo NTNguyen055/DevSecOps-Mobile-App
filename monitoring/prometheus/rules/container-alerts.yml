@@ -1,0 +1,39 @@
+groups:
+  - name: containers
+    rules:
+
+      - alert: DevSecOpsAPIDown
+        expr: absent(container_state{name="devsecops-api",state="running"})
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "devsecops-api container is down"
+          description: "The devsecops-api container has not been running for more than 2 minutes."
+
+      - alert: DevSecOpsAPIUnhealthy
+        expr: container_health_status{name="devsecops-api",status="unhealthy"} == 1
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "devsecops-api container is unhealthy"
+          description: "The devsecops-api container health status has been unhealthy for more than 2 minutes."
+
+      - alert: DevSecOpsAPICPUHigh
+        expr: 100 * rate(container_cpu_usage_seconds_total{name="devsecops-api"}[5m]) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "devsecops-api CPU usage is high"
+          description: "The devsecops-api container CPU usage has been above 80% for more than 5 minutes."
+
+      - alert: DevSecOpsAPIMemoryHigh
+        expr: 100 * container_memory_working_set_bytes{name="devsecops-api"} / container_memory_limit_bytes{name="devsecops-api"} > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "devsecops-api memory usage is high"
+          description: "The devsecops-api container memory usage has been above 85% of its limit for more than 5 minutes."
