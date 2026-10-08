@@ -1,0 +1,5 @@
+# Unfixed upstream vulnerabilities in Expo 57 dependency tree.
+# No compatible fixed version is currently available without forcing
+# an incompatible dependency change / Expo downgrade.
+CVE-2026-93687
+CVE-2026-85393
