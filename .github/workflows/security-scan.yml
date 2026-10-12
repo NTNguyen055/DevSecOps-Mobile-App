@@ -256,20 +256,31 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: npm-audit-client-report
-          path: client/npm-audit-client.html
+          path: |
+            client/npm-audit-client.html
+            client/npm-audit-client.json
           if-no-files-found: error
           retention-days: 30
 
       - name: Enforce npm audit security gate
         if: always()
         run: |
-          if [ "${{ steps.audit-backend.outcome }}" = "failure" ] || \
-             [ "${{ steps.audit-client.outcome }}" = "failure" ]; then
-            echo "npm audit security gate failed"
+          if [ "${{ steps.audit-backend.outcome }}" != "success" ]; then
+            echo "::error::Backend npm audit did not pass"
             exit 1
           fi
 
-          echo "npm audit security gate passed"
+          if [ "${{ steps.audit-client.outcome }}" != "success" ] && \
+            [ "${{ steps.audit-client.outcome }}" != "failure" ]; then
+            echo "::error::Mobile npm audit did not execute"
+            exit 1
+          fi
+
+          node --test scripts/test-npm-audit-gate.js
+
+          node scripts/check-npm-audit.js \
+            client/npm-audit-client.json \
+            security/npm-audit-exceptions.json
 
   sonarqube:
     name: SAST (SonarQube)
