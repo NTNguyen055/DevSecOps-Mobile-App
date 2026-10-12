@@ -1,6 +1,6 @@
 services:
   prometheus:
-    image: prom/prometheus:v3.14.0
+    image: prom/prometheus:v3.15.0
     container_name: monitoring-prometheus
     restart: unless-stopped
     command:
@@ -8,6 +8,7 @@ services:
       - --storage.tsdb.path=/prometheus
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
       - prometheus-data:/prometheus
     ports:
       - "127.0.0.1:9090:9090"
@@ -48,8 +49,23 @@ services:
     ports:
       - "127.0.0.1:9115:9115"
 
+  alertmanager:
+    image: prom/alertmanager:v0.30.0
+    container_name: monitoring-alertmanager
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    ports:
+      - "127.0.0.1:9093:9093"
+    secrets:
+      - monitoring_webhook_token
+    group_add:
+      - "24000"
+
   grafana:
-    image: grafana/grafana:13.2.2
+    image: grafana/grafana:13.2.3
     container_name: monitoring-grafana
     restart: unless-stopped
     ports:
@@ -59,6 +75,23 @@ services:
     depends_on:
       - prometheus
 
+  telegram-notifier:
+    build:
+      context: ./telegram-notifier
+    container_name: monitoring-telegram-notifier
+    restart: unless-stopped
+    environment:
+      AWS_REGION: ap-southeast-1
+      SECRET_ID: devsecops-monitoring/telegram
+    secrets:
+      - monitoring_webhook_token
+    group_add:
+      - "24000"
+
 volumes:
   prometheus-data:
   grafana-data:
+
+secrets:
+  monitoring_webhook_token:
+    file: ./secrets/monitoring_webhook_token

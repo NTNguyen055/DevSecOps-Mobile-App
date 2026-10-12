@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "scope": "client",
+  "approvedOn": "2026-10-12",
+  "expiresOn": "2026-11-11",
+  "approvedBy": "Project maintainer",
+  "justification": "Graduation DevSecOps project; Mobile is used for local development through npx expo start. No EAS Build, EAS Update, or published mobile application. A temporary exception is accepted while upstream fixes are unavailable; CI and developer tooling remain subject to mitigation controls.",
+  "mitigations": [
+    "Do not expose Metro development server publicly",
+    "Do not process untrusted glob patterns in Metro/build tooling",
+    "Do not use Expo code-signing verification workflows until this exception is re-assessed",
+    "Use locked dependencies and trusted build environments",
+    "Review upstream advisories and expire exception as scheduled"
+  ],
+  "allowedAdvisories": [
+    {
+      "id": "GHSA-vfj7-8cjw-p6xm",
+      "package": "braces",
+      "reason": "Metro/micromatch transitive dependency; no untrusted glob input identified in the current development-only use case"
+    },
+    {
+      "id": "GHSA-86w9-cpqp-85rv",
+      "package": "node-forge",
+      "reason": "Expo CLI code-signing-certificates transitive dependency; the project does not use EAS Build or EAS Update"
+    }
+  ]
+}
