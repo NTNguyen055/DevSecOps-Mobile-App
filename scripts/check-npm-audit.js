@@ -34,7 +34,7 @@ function loadJson(file) {
 }
 
 function validatePolicy(policy) {
-  if (!policy || policy.schemaVersion !== 1 || policy.scope !== 'client') {
+  if (policy?.schemaVersion !== 1 || policy.scope !== 'client') {
     fail('Invalid exception policy schema or scope; expected Mobile Client only');
   }
   if (typeof policy.expiresOn !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(policy.expiresOn)) {
@@ -56,7 +56,7 @@ function validatePolicy(policy) {
   }
   const seen = new Set();
   for (const entry of policy.allowedAdvisories) {
-    if (!entry || APPROVED.get(entry.id) !== entry.package || seen.has(entry.id)) {
+    if (!entry?.id || APPROVED.get(entry.id) !== entry.package || seen.has(entry.id)) {
       fail(`Unapproved, mismatched, or duplicate advisory in policy: ${entry?.id}`);
     }
     seen.add(entry.id);
@@ -88,78 +88,92 @@ function validateAudit(report) {
   return counts;
 }
 
-function checkReport(report, approvedExpiry) {
-  const counts = validateAudit(report);
-  const vulnerabilities = report.vulnerabilities;
-
-  // npm audit may report legitimate cycles (e.g. metro <-> metro-config).
-  // First validate the entire reachable dependency graph and ALL direct advisories.
-  // Then ensure EVERY visited package has a path to an approved direct advisory.
-  // A cycle alone, or a side branch without an approved advisory, is NOT accepted.
-  function inspectPackage(startName) {
-    const visited = new Set();
-    const pending = [startName];
-    const dependencies = new Map();
-    const advisoryRoots = new Set();
-
-    while (pending.length > 0) {
-      const name = pending.pop();
-      if (visited.has(name)) continue;
-      visited.add(name);
-
-      const vuln = vulnerabilities[name];
-      if (!vuln || !Array.isArray(vuln.via) || vuln.via.length === 0) {
-        return `Missing vulnerability chain or advisory for ${name}`;
-      }
-
-      const downstream = [];
-      for (const via of vuln.via) {
-        if (typeof via === 'string' && via.length > 0) {
-          downstream.push(via);
-          pending.push(via);
-        } else if (via && typeof via === 'object' && !Array.isArray(via)) {
-          const ghsa = extractGhsa(via.url);
-          if (!ghsa || APPROVED.get(ghsa) !== name || via.name !== name) {
-            return `Unapproved direct advisory for ${name}: ${via.url || 'unknown URL'}`;
-          }
-          advisoryRoots.add(name);
-        } else {
-          return `Malformed via entry for ${name}`;
-        }
-      }
-      dependencies.set(name, downstream);
-    }
-
-    if (advisoryRoots.size === 0) {
-      return `No approved advisory reachable from ${startName}`;
-    }
-
-    // Work backwards from approved advisory roots. This handles cycles without
-    // assuming they are safe: a disconnected cycle can never become grounded.
-    const grounded = new Set(advisoryRoots);
-    let changed;
-    do {
-      changed = false;
-      for (const [name, downstream] of dependencies) {
-        if (!grounded.has(name) && downstream.some(dep => grounded.has(dep))) {
-          grounded.add(name);
-          changed = true;
-        }
-      }
-    } while (changed);
-
-    for (const name of visited) {
-      if (!grounded.has(name)) {
-        return `Dependency branch at ${name} has no path to an approved advisory`;
-      }
-    }
+// Validate every path in the dependency graph; cycles alone are not trusted.
+function inspectViaEntry(via, name, downstream, pending, advisoryRoots) {
+  if (typeof via === 'string' && via.length > 0) {
+    downstream.push(via);
+    pending.push(via);
     return null;
   }
 
+  if (!via || typeof via !== 'object' || Array.isArray(via)) {
+    return `Malformed via entry for ${name}`;
+  }
+
+  const ghsa = extractGhsa(via.url);
+  if (!ghsa || APPROVED.get(ghsa) !== name || via.name !== name) {
+    return `Unapproved direct advisory for ${name}: ${via.url || 'unknown URL'}`;
+  }
+
+  advisoryRoots.add(name);
+  return null;
+}
+
+function buildDependencyGraph(startName, vulnerabilities) {
+  const visited = new Set();
+  const pending = [startName];
+  const dependencies = new Map();
+  const advisoryRoots = new Set();
+
+  while (pending.length > 0) {
+    const name = pending.pop();
+    if (visited.has(name)) continue;
+    visited.add(name);
+
+    const vuln = vulnerabilities[name];
+    if (!vuln || !Array.isArray(vuln.via) || vuln.via.length === 0) {
+      return { error: `Missing vulnerability chain or advisory for ${name}` };
+    }
+
+    const downstream = [];
+    for (const via of vuln.via) {
+      const error = inspectViaEntry(via, name, downstream, pending, advisoryRoots);
+      if (error) return { error };
+    }
+    dependencies.set(name, downstream);
+  }
+
+  return { visited, dependencies, advisoryRoots };
+}
+
+// Propagate trust backwards only from a directly validated advisory.
+function findGroundedPackages(dependencies, advisoryRoots) {
+  const grounded = new Set(advisoryRoots);
+  let changed;
+  do {
+    changed = false;
+    for (const [name, downstream] of dependencies) {
+      if (!grounded.has(name) && downstream.some(dep => grounded.has(dep))) {
+        grounded.add(name);
+        changed = true;
+      }
+    }
+  } while (changed);
+  return grounded;
+}
+
+function inspectPackage(startName, vulnerabilities) {
+  const graph = buildDependencyGraph(startName, vulnerabilities);
+  if (graph.error) return graph.error;
+  if (graph.advisoryRoots.size === 0) {
+    return `No approved advisory reachable from ${startName}`;
+  }
+
+  const grounded = findGroundedPackages(graph.dependencies, graph.advisoryRoots);
+  for (const name of graph.visited) {
+    if (!grounded.has(name)) {
+      return `Dependency branch at ${name} has no path to an approved advisory`;
+    }
+  }
+  return null;
+}
+
+function collectFindings(vulnerabilities) {
   const blocked = [];
   const accepted = [];
   let actualHigh = 0;
   let actualCritical = 0;
+
   for (const [name, vuln] of Object.entries(vulnerabilities)) {
     if (!vuln || typeof vuln !== 'object') {
       blocked.push(`${name}: malformed vulnerability entry`);
@@ -168,10 +182,18 @@ function checkReport(report, approvedExpiry) {
     if (vuln.severity === 'high') actualHigh++;
     if (vuln.severity === 'critical') actualCritical++;
     if (!BLOCKING_SEVERITIES.has(vuln.severity)) continue;
-    const reason = inspectPackage(name);
+
+    const reason = inspectPackage(name, vulnerabilities);
     if (reason) blocked.push(`${name}: ${reason}`);
     else accepted.push(name);
   }
+
+  return { blocked, accepted, actualHigh, actualCritical };
+}
+
+function checkReport(report, approvedExpiry) {
+  const counts = validateAudit(report);
+  const { blocked, accepted, actualHigh, actualCritical } = collectFindings(report.vulnerabilities);
 
   if (actualHigh !== counts.high || actualCritical !== counts.critical) {
     fail(`Audit count mismatch: metadata HIGH=${counts.high}, CRITICAL=${counts.critical}; listed HIGH=${actualHigh}, CRITICAL=${actualCritical}`);

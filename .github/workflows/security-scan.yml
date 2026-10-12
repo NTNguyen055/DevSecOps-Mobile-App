@@ -317,6 +317,24 @@ jobs:
           test -s coverage.xml
           echo "Coverage XML generated successfully"
 
+      - name: Set up Node.js for audit gate coverage
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Generate JavaScript coverage for audit gate
+        run: |
+          mkdir -p coverage/npm-audit
+          node --test --experimental-test-coverage \
+            --test-reporter=spec \
+            --test-reporter-destination=stdout \
+            --test-reporter=lcov \
+            --test-reporter-destination=coverage/npm-audit/lcov.info \
+            scripts/test-npm-audit-gate.js
+
+          test -s coverage/npm-audit/lcov.info
+          grep -q 'scripts/check-npm-audit.js' coverage/npm-audit/lcov.info
+
       - name: Run SonarQube analysis
         uses: SonarSource/sonarqube-scan-action@v8.1.0
         with:
