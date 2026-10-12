@@ -6,6 +6,7 @@ module.exports = [
       "node_modules/**",
       "client/**",
       "coverage/**",
+      "**/.venv*/**",
     ],
   },
 

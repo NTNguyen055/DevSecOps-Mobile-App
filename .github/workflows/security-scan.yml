@@ -70,11 +70,13 @@ jobs:
       - name: Run Trivy filesystem scan
         uses: aquasecurity/trivy-action@v0.36.0
         with:
+          version: 'v0.75.0'
           scan-type: 'fs'
           scan-ref: '.'
           format: 'sarif'
           output: 'trivy-fs-results.sarif'
           severity: 'CRITICAL,HIGH'
+          limit-severities-for-sarif: 'true'
           exit-code: '1'
 
       - name: Upload SARIF to GitHub Security tab
@@ -86,8 +88,9 @@ jobs:
 
       - name: Generate Trivy HTML report
         if: always()
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
+          version: 'v0.75.0'
           scan-type: 'fs'
           scan-ref: '.'
           format: 'template'
@@ -124,12 +127,14 @@ jobs:
 
       # Scan chính image vừa build.
       - name: Run Trivy image scan
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
+          version: 'v0.75.0'
           image-ref: 'ntnguyen055/devsecops-mobile-app:${{ github.sha }}'
           format: 'sarif'
           output: 'trivy-image-results.sarif'
           severity: 'CRITICAL,HIGH'
+          limit-severities-for-sarif: 'true'
           exit-code: '1'
 
       # Upload kết quả scan lên GitHub Security.
@@ -142,8 +147,9 @@ jobs:
 
       - name: Generate Trivy image HTML report
         if: always()
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
+          version: 'v0.75.0'
           image-ref: 'ntnguyen055/devsecops-mobile-app:${{ github.sha }}'
           format: 'template'
           template: '@/home/runner/.local/bin/trivy-bin/contrib/html.tpl'
