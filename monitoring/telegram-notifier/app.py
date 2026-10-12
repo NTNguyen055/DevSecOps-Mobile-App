@@ -1,21 +1,33 @@
 import json
 import os
 import urllib.request
-
+import hmac
 import boto3
-from flask import Flask, request, jsonify
 
+from flask import Flask, request, jsonify
+from pathlib import Path
+from html import escape
 
 app = Flask(__name__)
 
 AWS_REGION = os.getenv("AWS_REGION", "ap-southeast-1")
 SECRET_ID = os.getenv("SECRET_ID", "devsecops-monitoring/telegram")
+WEBHOOK_TOKEN_FILE = os.getenv(
+    "WEBHOOK_TOKEN_FILE",
+    "/run/secrets/monitoring_webhook_token"
+)
+
+WEBHOOK_TOKEN = Path(
+    WEBHOOK_TOKEN_FILE
+).read_text(encoding="utf-8").strip()
+
+if not WEBHOOK_TOKEN:
+    raise RuntimeError("Webhook authentication token is empty")
 
 secrets_client = boto3.client(
     "secretsmanager",
     region_name=AWS_REGION
 )
-
 
 def get_telegram_secret():
     response = secrets_client.get_secret_value(
@@ -28,7 +40,6 @@ def get_telegram_secret():
         secret["monitor_bot_token"],
         secret["monitor_chat_id"]
     )
-
 
 def send_telegram(message):
     bot_token, chat_id = get_telegram_secret()
@@ -55,33 +66,53 @@ def send_telegram(message):
 
 
 def format_alert(alert):
-    status = alert.get("status", "unknown").upper()
+    status = str(alert.get("status", "unknown")).upper()
 
-    labels = alert.get("labels", {})
-    annotations = alert.get("annotations", {})
+    labels = alert.get("labels") or {}
+    annotations = alert.get("annotations") or {}
 
-    alertname = labels.get("alertname", "Unknown")
-    severity = labels.get("severity", "unknown")
-    summary = annotations.get("summary", "")
-    description = annotations.get("description", "")
+    alertname = str(labels.get("alertname", "Unknown"))
+    severity = str(labels.get("severity", "unknown"))
+    summary = str(annotations.get("summary", ""))
+    description = str(annotations.get("description", ""))
 
     emoji = "🚨" if status == "FIRING" else "✅"
 
     return (
         f"{emoji} <b>Monitoring Alert</b>\n\n"
-        f"<b>Status:</b> {status}\n"
-        f"<b>Alert:</b> {alertname}\n"
-        f"<b>Severity:</b> {severity}\n"
-        f"<b>Summary:</b> {summary}\n"
-        f"<b>Description:</b> {description}"
+        f"<b>Status:</b> {escape(status)}\n"
+        f"<b>Alert:</b> {escape(alertname)}\n"
+        f"<b>Severity:</b> {escape(severity)}\n"
+        f"<b>Summary:</b> {escape(summary)}\n"
+        f"<b>Description:</b> {escape(description)}"
     )
-
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    data = request.get_json(silent=True) or {}
+    authorization = request.headers.get("Authorization", "")
+    expected = f"Bearer {WEBHOOK_TOKEN}"
+
+    if not hmac.compare_digest(authorization, expected):
+        return jsonify({"error": "unauthorized"}), 401
+
+    data = request.get_json(silent=True)
+
+    if not isinstance(data, dict):
+        return jsonify({"error": "invalid JSON object"}), 400
 
     alerts = data.get("alerts", [])
+
+    if not isinstance(alerts, list) or any(
+        not isinstance(alert, dict) for alert in alerts
+    ):
+        return jsonify({"error": "invalid alerts"}), 400
+
+    for alert in alerts:
+        if (
+            not isinstance(alert.get("labels", {}), dict)
+            or not isinstance(alert.get("annotations", {}), dict)
+        ):
+            return jsonify({"error": "invalid alert fields"}), 400
 
     if not alerts:
         return jsonify({
@@ -98,14 +129,6 @@ def webhook():
         "alerts": len(alerts)
     }), 200
 
-
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({"status": "ok"}), 200
-
-
-if __name__ == "__main__":
-    app.run(
-        host="0.0.0.0",
-        port=8080
-    )

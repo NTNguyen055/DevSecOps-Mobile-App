@@ -83,3 +83,10 @@ zap.yaml
 # Python
 __pycache__/
 *.py[cod]
+
+/monitoring/local-tests/
+/monitoring/secrets/
+/.venv-monitoring/
+/.coverage
+/coverage.xml
+/.pytest_cache/

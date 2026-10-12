@@ -15,3 +15,7 @@ receivers:
     webhook_configs:
       - url: http://telegram-notifier:8080/webhook
         send_resolved: true
+        http_config:
+          authorization:
+            type: Bearer
+            credentials_file: /run/secrets/monitoring_webhook_token
