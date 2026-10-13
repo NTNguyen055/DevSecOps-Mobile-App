@@ -6,6 +6,7 @@ module.exports = [
       "node_modules/**",
       "client/**",
       "coverage/**",
+      "**/.venv*/**",
     ],
   },
 
@@ -20,6 +21,7 @@ module.exports = [
         console: "readonly",
         process: "readonly",
         Buffer: "readonly",
+        structuredClone: "readonly",
         __dirname: "readonly",
         __filename: "readonly",
         module: "readonly",

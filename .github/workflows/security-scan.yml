@@ -70,11 +70,13 @@ jobs:
       - name: Run Trivy filesystem scan
         uses: aquasecurity/trivy-action@v0.36.0
         with:
+          version: 'v0.75.0'
           scan-type: 'fs'
           scan-ref: '.'
           format: 'sarif'
           output: 'trivy-fs-results.sarif'
           severity: 'CRITICAL,HIGH'
+          limit-severities-for-sarif: 'true'
           exit-code: '1'
 
       - name: Upload SARIF to GitHub Security tab
@@ -86,8 +88,9 @@ jobs:
 
       - name: Generate Trivy HTML report
         if: always()
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
+          version: 'v0.75.0'
           scan-type: 'fs'
           scan-ref: '.'
           format: 'template'
@@ -124,12 +127,14 @@ jobs:
 
       # Scan chính image vừa build.
       - name: Run Trivy image scan
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
+          version: 'v0.75.0'
           image-ref: 'ntnguyen055/devsecops-mobile-app:${{ github.sha }}'
           format: 'sarif'
           output: 'trivy-image-results.sarif'
           severity: 'CRITICAL,HIGH'
+          limit-severities-for-sarif: 'true'
           exit-code: '1'
 
       # Upload kết quả scan lên GitHub Security.
@@ -142,8 +147,9 @@ jobs:
 
       - name: Generate Trivy image HTML report
         if: always()
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
+          version: 'v0.75.0'
           image-ref: 'ntnguyen055/devsecops-mobile-app:${{ github.sha }}'
           format: 'template'
           template: '@/home/runner/.local/bin/trivy-bin/contrib/html.tpl'
@@ -250,20 +256,32 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: npm-audit-client-report
-          path: client/npm-audit-client.html
+          path: |
+            client/npm-audit-client.html
+            client/npm-audit-client.json
           if-no-files-found: error
           retention-days: 30
 
       - name: Enforce npm audit security gate
         if: always()
         run: |
-          if [ "${{ steps.audit-backend.outcome }}" = "failure" ] || \
-             [ "${{ steps.audit-client.outcome }}" = "failure" ]; then
-            echo "npm audit security gate failed"
+          if [ "${{ steps.audit-backend.outcome }}" != "success" ]; then
+            echo "::error::Backend npm audit did not pass"
             exit 1
           fi
 
-          echo "npm audit security gate passed"
+          if [ "${{ steps.audit-client.outcome }}" != "success" ] && \
+            [ "${{ steps.audit-client.outcome }}" != "failure" ]; then
+            echo "::error::Mobile npm audit did not execute"
+            exit 1
+          fi
+
+          node --test scripts/test-npm-audit-gate.js
+
+          node scripts/check-npm-audit.js \
+            client/npm-audit-client.json \
+            security/npm-audit-exceptions.json
+
   sonarqube:
     name: SAST (SonarQube)
     needs: changes
@@ -275,6 +293,47 @@ jobs:
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
+
+      - name: Set up Python for notifier tests
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: monitoring/telegram-notifier/requirements-dev.txt
+
+      - name: Install notifier test dependencies
+        run: |
+          python -m pip install -r monitoring/telegram-notifier/requirements-dev.txt
+
+      - name: Run notifier unit tests and coverage
+        run: |
+          python -m pytest monitoring/telegram-notifier/tests \
+            --cov=telegram_notifier_app \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml
+
+      - name: Verify coverage report exists
+        run: |
+          test -s coverage.xml
+          echo "Coverage XML generated successfully"
+
+      - name: Set up Node.js for audit gate coverage
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Generate JavaScript coverage for audit gate
+        run: |
+          mkdir -p coverage/npm-audit
+          node --test --experimental-test-coverage \
+            --test-reporter=spec \
+            --test-reporter-destination=stdout \
+            --test-reporter=lcov \
+            --test-reporter-destination=coverage/npm-audit/lcov.info \
+            scripts/test-npm-audit-gate.js
+
+          test -s coverage/npm-audit/lcov.info
+          grep -q 'scripts/check-npm-audit.js' coverage/npm-audit/lcov.info
 
       - name: Run SonarQube analysis
         uses: SonarSource/sonarqube-scan-action@v8.1.0

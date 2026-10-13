@@ -9,8 +9,12 @@ const userRoutes = require('./routes/users.routes');
 const cartRoutes = require('./routes/cart.routes');
 const orderRoutes = require('./routes/orders.routes');
 const swaggerUi = require('swagger-ui-express');
-const YAML = require('yamljs');
-const swaggerDocument = YAML.load('./docs/openapi.yaml');
+const fs = require('node:fs');
+const YAML = require('yaml');
+
+const swaggerDocument = YAML.parse(
+  fs.readFileSync('./docs/openapi.yaml', 'utf8')
+);
 
 const app = express();
 app.disable('x-powered-by');

@@ -30,14 +30,22 @@ jobs:
           test -f monitoring/docker-compose.yml
           test -f monitoring/prometheus/prometheus.yml
 
+      - name: Prepare test secret for Compose validation
+        run: |
+          set -euo pipefail
+          mkdir -p monitoring/secrets
+          printf '%s' 'ci-validation-placeholder' \
+            > monitoring/secrets/monitoring_webhook_token
+
       - name: Validate Docker Compose
         run: |
-          docker compose -f monitoring/docker-compose.yml config
+          docker compose -f monitoring/docker-compose.yml config -q
 
       - name: Validate Prometheus configuration
         run: |
-            docker run --rm \
+          docker run --rm \
             --entrypoint promtool \
             -v "$PWD/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro" \
-            prom/prometheus:v3.5.0 \
+            -v "$PWD/monitoring/prometheus/rules:/etc/prometheus/rules:ro" \
+            prom/prometheus:v3.15.0 \
             check config /etc/prometheus/prometheus.yml
