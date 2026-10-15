@@ -456,6 +456,68 @@ jobs:
           name: owasp-zap-dast-report
           path: telegram-reports/zap
 
+      - name: Summarize OWASP ZAP report
+        id: zap_summary
+        if: always()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          report = Path(
+              "telegram-reports/zap/zap-baseline-report.json"
+          )
+
+          summary = "UNAVAILABLE (JSON report missing or invalid)"
+
+          try:
+              data = json.loads(
+                  report.read_text(encoding="utf-8")
+              )
+
+              sites = data["site"]
+
+              if isinstance(sites, dict):
+                  sites = [sites]
+
+              if not isinstance(sites, list):
+                  raise ValueError("Invalid ZAP site format")
+
+              counts = {
+                  "0": 0,
+                  "1": 0,
+                  "2": 0,
+                  "3": 0
+              }
+
+              for site in sites:
+                  for alert in site.get("alerts", []):
+                      severity = str(alert["riskcode"])
+                      counts[severity] += 1
+
+              summary = (
+                  f"High: {counts['3']} | "
+                  f"Medium: {counts['2']} | "
+                  f"Low: {counts['1']} | "
+                  f"Informational: {counts['0']}"
+              )
+
+          except (OSError, ValueError, TypeError,
+                  KeyError, AttributeError) as error:
+              print("Unable to summarize ZAP report:", error)
+
+          with open(
+              os.environ["GITHUB_OUTPUT"],
+              "a",
+              encoding="utf-8"
+          ) as output:
+              print(f"summary={summary}", file=output)
+
+          print("ZAP findings:", summary)
+          PY
+
       - name: Send Deploy status to Telegram
         if: always()
         continue-on-error: true
@@ -464,12 +526,58 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           DEPLOY_STATUS: ${{ steps.status.outputs.status }}
           COMMIT_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+          ZAP_STATUS: ${{ needs.deploy.outputs.zap_status }}
+          ROLLBACK_STATUS: ${{ needs.deploy.outputs.rollback_status }}
+          ZAP_SUMMARY: ${{ steps.zap_summary.outputs.summary }}
         run: |
-          ROLLBACK_RESULT="${{ needs.deploy.outputs.rollback_status }}"
+          # Determine OWASP ZAP scan result
+          case "${ZAP_STATUS:-}" in
+            0)
+              ZAP_RESULT="PASS"
+              ;;
+            1)
+              ZAP_RESULT="FAIL"
+              ;;
+            2)
+              ZAP_RESULT="WARN"
+              ;;
+            3)
+              ZAP_RESULT="SCAN ERROR"
+              ;;
+            "")
+              ZAP_RESULT="NOT RUN"
+              ZAP_STATUS="N/A"
+              ;;
+            *)
+              ZAP_RESULT="UNKNOWN"
+              ;;
+          esac
 
-          if [ "$ROLLBACK_RESULT" = "skipped" ]; then
-            ROLLBACK_RESULT="NOT REQUIRED"
-          fi
+          # Determine rollback result
+          case "${ROLLBACK_STATUS:-}" in
+            success)
+              ROLLBACK_STATUS="SUCCESS"
+              ;;
+            failure)
+              ROLLBACK_STATUS="FAILED"
+              ;;
+            skipped)
+              if [ "${DEPLOY_STATUS}" = "PASSED" ]; then
+                ROLLBACK_STATUS="NOT REQUIRED"
+              else
+                ROLLBACK_STATUS="NOT EXECUTED"
+              fi
+              ;;
+            cancelled)
+              ROLLBACK_STATUS="CANCELLED"
+              ;;
+            *)
+              ROLLBACK_STATUS="UNKNOWN"
+              ;;
+          esac
+
+          ZAP_SUMMARY="${ZAP_SUMMARY:-UNAVAILABLE}"
+
           MESSAGE=$(cat <<EOF
           PRODUCTION DEPLOYMENT
 
@@ -492,6 +600,7 @@ jobs:
 
           Scan result: ${ZAP_RESULT}
           Exit code: ${ZAP_STATUS}
+          Findings: ${ZAP_SUMMARY}
 
           ----------------------------------------
 
