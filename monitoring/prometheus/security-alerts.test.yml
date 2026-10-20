@@ -1,0 +1,55 @@
+
+rule_files:
+  - /etc/prometheus/rules/security-alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'app_security_suspected_ip_last_detected_timestamp_seconds{job="application-security",type="possible_brute_force",source_ip="198.51.100.77"}'
+        values: '_ 60+0x11'
+
+    alert_rule_test:
+      # Detection occurs at t = 60 seconds.
+      - eval_time: 1m
+        alertname: PossibleBruteForceLogin
+        exp_alerts:
+          - exp_labels:
+              job: application-security
+              type: possible_brute_force
+              source_ip: 198.51.100.77
+              severity: warning
+              category: application-security
+            exp_annotations:
+              summary: "Suspected brute-force login from IP 198.51.100.77"
+              description: >-
+                Possible brute-force login activity detected.
+                Source IP: 198.51.100.77.
+                Detection threshold: 10 failed login attempts
+                within 5 minutes.
+                The IP is a suspected source, not a confirmed attacker.
+
+      # Nine minutes after detection: still active.
+      - eval_time: 10m
+        alertname: PossibleBruteForceLogin
+        exp_alerts:
+          - exp_labels:
+              job: application-security
+              type: possible_brute_force
+              source_ip: 198.51.100.77
+              severity: warning
+              category: application-security
+            exp_annotations:
+              summary: "Suspected brute-force login from IP 198.51.100.77"
+              description: >-
+                Possible brute-force login activity detected.
+                Source IP: 198.51.100.77.
+                Detection threshold: 10 failed login attempts
+                within 5 minutes.
+                The IP is a suspected source, not a confirmed attacker.
+
+      # Ten minutes after detection: no longer active.
+      - eval_time: 11m
+        alertname: PossibleBruteForceLogin
+        exp_alerts: []

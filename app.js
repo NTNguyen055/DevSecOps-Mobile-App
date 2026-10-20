@@ -3,6 +3,8 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const db = require('./db');
+const httpMetricsMiddleware = require('./middleware/httpMetrics');
+const configureTrustedProxy = require('./middleware/trustedClientIp');
 const authRoutes = require('./routes/auth.routes');
 const productRoutes = require('./routes/products.routes');
 const userRoutes = require('./routes/users.routes');
@@ -16,8 +18,17 @@ const swaggerDocument = YAML.parse(
   fs.readFileSync('./docs/openapi.yaml', 'utf8')
 );
 
+
 const app = express();
 app.disable('x-powered-by');
+
+// Trust only an explicitly configured reverse proxy.
+// Default: do not trust forwarded client IP headers.
+configureTrustedProxy(app);
+
+// Collect HTTP request metrics before application routes.
+app.use(httpMetricsMiddleware);
+
 
 // Mobile app (React Native/Expo) does not have a fixed browser origin.
 // Allow all origins in development; set CLIENT_ORIGIN=* or specific IPs in production.
