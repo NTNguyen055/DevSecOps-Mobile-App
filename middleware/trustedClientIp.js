@@ -14,7 +14,7 @@ function configureTrustedProxy(
   }
 
   if (typeof trustedProxyIp !== 'string') {
-    throw new Error('TRUSTED_PROXY_IP must be a string');
+    throw new TypeError('TRUSTED_PROXY_IP must be a string');
   }
 
   const ip = trustedProxyIp.trim();

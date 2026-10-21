@@ -11,17 +11,17 @@ const {
   recordSuspectedIp
 } = require('../middleware/suspectedIpMetrics');
 
+function makeEvent(ip, now = Date.now()) {
+  return {
+    type: 'possible_brute_force',
+    sourceIp: ip,
+    detectedAt: new Date(now).toISOString()
+  };
+}
+
 describe('Suspected IP Security Metrics', () => {
   const metricName =
     'app_security_suspected_ip_last_detected_timestamp_seconds';
-
-  function makeEvent(ip, now = Date.now()) {
-    return {
-      type: 'possible_brute_force',
-      sourceIp: ip,
-      detectedAt: new Date(now).toISOString()
-    };
-  }
 
   async function findIpMetric(ip) {
     const metrics = await registry.metrics();

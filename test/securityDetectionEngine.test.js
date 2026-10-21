@@ -7,20 +7,20 @@ const {
   createBruteForceDetector
 } = require('../middleware/securityDetectionEngine');
 
+function createDetector(overrides = {}) {
+  return createBruteForceDetector({
+    windowMs: 60000,
+    threshold: 3,
+    cooldownMs: 30000,
+    bucketMs: 1000,
+    maxTrackedIps: 100,
+    ...overrides
+  });
+}
+
 describe('Brute Force Security Detection Engine', () => {
   const ip1 = '198.51.100.10';
   const ip2 = '203.0.113.20';
-
-  function createDetector(overrides = {}) {
-    return createBruteForceDetector({
-      windowMs: 60000,
-      threshold: 3,
-      cooldownMs: 30000,
-      bucketMs: 1000,
-      maxTrackedIps: 100,
-      ...overrides
-    });
-  }
 
   it('excludes expired events at sliding-window boundaries', () => {
     const detector = createDetector({
@@ -127,7 +127,7 @@ describe('Brute Force Security Detection Engine', () => {
       threshold: 2
     });
 
-    detector.recordFailedLogin('::ffff:198.51.100.10', 10000);
+    detector.recordFailedLogin(`::ffff:${ip1}`, 10000);
 
     const event = detector.recordFailedLogin(ip1, 11000);
 

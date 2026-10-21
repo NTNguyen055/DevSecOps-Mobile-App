@@ -29,6 +29,21 @@ if (originalDatabaseUrl === undefined) {
 const { registry } = require('../middleware/securityMetrics');
 const loginSecurityMonitor = require('../middleware/loginSecurityMonitor');
 
+// Read the counter from the Prometheus exposition format.
+async function getLoginCounter(outcome, reason) {
+  const metrics = await registry.metrics();
+
+  const prefix =
+    'app_auth_login_attempts_total' +
+    `{outcome="${outcome}",reason="${reason}"} `;
+
+  const line = metrics
+    .split('\n')
+    .find((item) => item.startsWith(prefix));
+
+  return line ? Number(line.slice(prefix.length)) : 0;
+}
+
 describe('Application Authentication Metrics', () => {
   const originalFindUser = userModel.findUserByEmail;
   const originalCompare = bcrypt.compare;
@@ -39,21 +54,6 @@ describe('Application Authentication Metrics', () => {
 
   app.use(express.json());
   app.use('/auth', authRoutes);
-
-  // Read the counter from the Prometheus exposition format.
-  async function getLoginCounter(outcome, reason) {
-    const metrics = await registry.metrics();
-
-    const prefix =
-      'app_auth_login_attempts_total' +
-      `{outcome="${outcome}",reason="${reason}"} `;
-
-    const line = metrics
-      .split('\n')
-      .find((item) => item.startsWith(prefix));
-
-    return line ? Number(line.slice(prefix.length)) : 0;
-  }
 
   before(() => {
     process.env.JWT_SECRET = 'test-only-auth-metrics-secret';

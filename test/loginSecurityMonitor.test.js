@@ -11,24 +11,24 @@ const {
   registry
 } = require('../middleware/securityMetrics');
 
+async function getDetectionCount() {
+  const metrics = await registry.metrics();
+
+  const prefix =
+    'app_security_detections_total' +
+    '{type="possible_brute_force"} ';
+
+  const line = metrics
+    .split('\n')
+    .find((item) => item.startsWith(prefix));
+
+  return line
+    ? Number(line.slice(prefix.length))
+    : 0;
+}
+
 describe('Brute Force Detection Metrics', () => {
   const testIp = '198.51.100.77';
-
-  async function getDetectionCount() {
-    const metrics = await registry.metrics();
-
-    const prefix =
-      'app_security_detections_total' +
-      '{type="possible_brute_force"} ';
-
-    const line = metrics
-      .split('\n')
-      .find((item) => item.startsWith(prefix));
-
-    return line
-      ? Number(line.slice(prefix.length))
-      : 0;
-  }
 
   it('increments the metric only when brute force is detected', async () => {
     const before = await getDetectionCount();
