@@ -6,10 +6,13 @@ services:
     restart: unless-stopped
 
     ports:
-      - "4001:4001"
+      - "127.0.0.1:4001:4001"
 
     environment:
       PORT: 4001
+      METRICS_PORT: 9464
+      METRICS_HOST: "0.0.0.0"
+      TRUSTED_PROXY_IP: "172.18.0.1"
       NODE_ENV: production
 
       AWS_REGION: ${AWS_REGION}

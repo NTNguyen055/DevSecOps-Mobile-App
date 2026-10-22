@@ -55,3 +55,11 @@ scrape_configs:
 
       - target_label: __address__
         replacement: blackbox-exporter:9115
+
+  # Application Security Metrics from Express API
+  - job_name: application-security
+    metrics_path: /metrics
+    scrape_interval: 15s
+    static_configs:
+      - targets:
+          - devsecops-api:9464

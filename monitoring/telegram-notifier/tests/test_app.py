@@ -197,7 +197,6 @@ def test_format_alert_escapes_html(notifier):
     # Formatting owned by the application remains intact.
     assert "<b>Monitoring Alert</b>" in message
 
-
 @pytest.mark.parametrize(
     "token_content",
     [
@@ -262,3 +261,76 @@ def test_notifier_rejects_missing_webhook_secret(
 
     with pytest.raises(FileNotFoundError):
         spec.loader.exec_module(module)
+
+def test_webhook_sends_brute_force_alert_with_source_ip(
+    client,
+    notifier,
+    auth_headers,
+    monkeypatch
+):
+    mock_send = MagicMock()
+
+    monkeypatch.setattr(
+        notifier,
+        "send_telegram",
+        mock_send
+    )
+
+    source_ip = "198.51.100.77"
+
+    # Simulate an Alertmanager webhook after Prometheus
+    # has rendered the alert annotations.
+    payload = {
+        "status": "firing",
+        "alerts": [
+            {
+                "status": "firing",
+                "labels": {
+                    "alertname": "PossibleBruteForceLogin",
+                    "severity": "warning",
+                    "category": "application-security",
+                    "source_ip": source_ip
+                },
+                "annotations": {
+                    "summary": (
+                        "Suspected brute-force login "
+                        f"from IP {source_ip}"
+                    ),
+                    "description": (
+                        "Possible brute-force login activity "
+                        f"detected. Source IP: {source_ip}. "
+                        "Detection threshold: 10 failed login "
+                        "attempts within 5 minutes. "
+                        "The IP is a suspected source, "
+                        "not a confirmed attacker."
+                    )
+                }
+            }
+        ]
+    }
+
+    response = client.post(
+        "/webhook",
+        json=payload,
+        headers=auth_headers
+    )
+
+    assert response.status_code == 200
+
+    assert response.get_json() == {
+        "status": "sent",
+        "alerts": 1
+    }
+
+    mock_send.assert_called_once()
+
+    message = mock_send.call_args.args[0]
+
+    assert "🚨" in message
+    assert "FIRING" in message
+    assert "PossibleBruteForceLogin" in message
+    assert "warning" in message
+    assert source_ip in message
+    assert "10 failed login attempts" in message
+    assert "within 5 minutes" in message
+    assert "not a confirmed attacker" in message

@@ -3,6 +3,11 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const userModel = require('../models/userModel');
 const authMiddleware = require('../middleware/authMiddleware');
+const loginSecurityMonitor = require('../middleware/loginSecurityMonitor');
+
+const {
+  authLoginAttemptsTotal
+} = require('../middleware/securityMetrics');
 
 const router = express.Router();
 
@@ -48,6 +53,11 @@ router.post('/login', async (req, res) => {
   const { email, password } = req.body || {};
 
   if (!email || !password) {
+    authLoginAttemptsTotal.inc({
+      outcome: 'rejected',
+      reason: 'missing_fields'
+    });
+
     return res.status(400).json({
       message: 'Email and password are required'
     });
@@ -57,6 +67,13 @@ router.post('/login', async (req, res) => {
     const user = await userModel.findUserByEmail(email);
 
     if (!user) {
+      authLoginAttemptsTotal.inc({
+        outcome: 'failure',
+        reason: 'invalid_credentials'
+      });
+
+      loginSecurityMonitor.recordFailedLogin(req);
+
       return res.status(401).json({
         message: 'Invalid email or password'
       });
@@ -65,6 +82,13 @@ router.post('/login', async (req, res) => {
     const passwordMatches = await bcrypt.compare(password, user.password_hash);
 
     if (!passwordMatches) {
+      authLoginAttemptsTotal.inc({
+        outcome: 'failure',
+        reason: 'invalid_credentials'
+      });
+
+      loginSecurityMonitor.recordFailedLogin(req);
+
       return res.status(401).json({
         message: 'Invalid email or password'
       });
@@ -80,6 +104,11 @@ router.post('/login', async (req, res) => {
       { expiresIn: '1h' }
     );
 
+    authLoginAttemptsTotal.inc({
+      outcome: 'success',
+      reason: 'authenticated'
+    });
+
     res.status(200).json({
       message: 'Login successful',
       token: token,
@@ -92,6 +121,11 @@ router.post('/login', async (req, res) => {
       }
     });
   } catch (err) {
+    authLoginAttemptsTotal.inc({
+      outcome: 'error',
+      reason: 'internal_error'
+    });
+
     res.status(500).json({
       message: 'Unable to log in',
       error: err.message

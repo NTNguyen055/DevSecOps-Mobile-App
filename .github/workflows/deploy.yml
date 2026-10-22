@@ -68,6 +68,8 @@ jobs:
             --comment "Capture previous production image before deployment" \
             --parameters commands='[
               "cd /home/ubuntu/app",
+              "PREVIOUS_COMMIT=$(sudo -u ubuntu git rev-parse HEAD)",
+              "echo \"PREVIOUS_COMMIT=${PREVIOUS_COMMIT}\"",
               "PREVIOUS_IMAGE=$(docker inspect -f '\''{{.Config.Image}}'\'' devsecops-api 2>/dev/null || true)",
               "echo \"Previous image: ${PREVIOUS_IMAGE}\"",
               "if [ -z \"${PREVIOUS_IMAGE}\" ]; then echo \"ERROR: Previous production image not found.\"; exit 1; fi",
@@ -125,6 +127,16 @@ jobs:
 
           echo "Previous production image: ${PREVIOUS_IMAGE}"
           echo "previous_image=${PREVIOUS_IMAGE}" >> "$GITHUB_OUTPUT"
+
+          PREVIOUS_COMMIT=$(printf '%s\n' "${OUTPUT}" | grep '^PREVIOUS_COMMIT=' | tail -1 | cut -d'=' -f2-)
+
+          if ! [[ "${PREVIOUS_COMMIT}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "ERROR: Previous Git commit is invalid or unavailable."
+            exit 1
+          fi
+
+          echo "Previous production commit: ${PREVIOUS_COMMIT}"
+          echo "previous_commit=${PREVIOUS_COMMIT}" >> "$GITHUB_OUTPUT"
 
       - name: Deploy application via AWS SSM
         id: deploy
@@ -297,6 +309,7 @@ jobs:
           retention-days: 30
 
       - name: Evaluate OWASP ZAP result
+        id: evaluate_zap
         if: always() && steps.deploy.outcome == 'success'
         shell: bash
         run: |
@@ -328,10 +341,11 @@ jobs:
 
       - name: Rollback production deployment
         id: rollback
-        if: always() && (steps.deploy.outcome == 'failure' || steps.zap.outputs.status == '1' || steps.zap.outputs.status == '3')
+        if: always() && (steps.deploy.outcome == 'failure' || steps.evaluate_zap.outcome == 'failure')
         shell: bash
         run: |
           PREVIOUS_IMAGE="${{ steps.previous.outputs.previous_image }}"
+          PREVIOUS_COMMIT="${{ steps.previous.outputs.previous_commit }}"
 
           echo "=== Starting automatic rollback ==="
           echo "Previous image: ${PREVIOUS_IMAGE}"
@@ -340,6 +354,13 @@ jobs:
             echo "ERROR: Previous image is unavailable. Rollback cannot continue."
             exit 1
           fi
+
+          if ! [[ "${PREVIOUS_COMMIT}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "ERROR: Previous Git commit is invalid or unavailable."
+            exit 1
+          fi
+
+          echo "Previous production commit: ${PREVIOUS_COMMIT}"
 
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "${EC2_INSTANCE_ID}" \
@@ -350,6 +371,12 @@ jobs:
               "cd /home/ubuntu/app",
               "export DOCKER_IMAGE='${PREVIOUS_IMAGE}'",
               "export DOMAIN='${DOMAIN}'",
+
+              "echo === Verify previous Git commit ===",
+              "sudo -u ubuntu git cat-file -e '${PREVIOUS_COMMIT}^{commit}'",
+
+              "echo === Restore previous repository revision ===",
+              "sudo -u ubuntu git reset --hard '${PREVIOUS_COMMIT}'",
 
               "echo === Pull previous Docker image ===",
               "docker pull ${DOCKER_IMAGE}",
@@ -362,6 +389,17 @@ jobs:
 
               "echo === Validate rollback health ===",
               "curl --fail --silent --show-error http://127.0.0.1:4001/health/db",
+
+              "echo === Restore previous Nginx configuration ===",
+              "sudo test -f nginx/devsecops-api.conf",
+              "sudo install -m 644 nginx/devsecops-api.conf /etc/nginx/sites-available/devsecops-api",
+              "sudo ln -sfn /etc/nginx/sites-available/devsecops-api /etc/nginx/sites-enabled/devsecops-api",
+
+              "echo === Validate restored Nginx configuration ===",
+              "sudo nginx -t",
+
+              "echo === Reload restored Nginx configuration ===",
+              "sudo systemctl reload nginx",
 
               "echo === Validate public HTTPS after rollback ===",
               "curl --fail --silent --show-error https://${DOMAIN}/health/db",

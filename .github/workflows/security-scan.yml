@@ -335,6 +335,27 @@ jobs:
           test -s coverage/npm-audit/lcov.info
           grep -q 'scripts/check-npm-audit.js' coverage/npm-audit/lcov.info
 
+      - name: Install backend dependencies for coverage
+        run: npm ci --no-audit
+
+      - name: Generate Application Security JavaScript coverage
+        run: |
+          npx c8 \
+            --reporter=text \
+            --reporter=lcov \
+            --reports-dir=coverage/security \
+            mocha \
+            test/httpMetrics.test.js \
+            test/authMetrics.test.js \
+            test/metricsServer.test.js \
+            test/trustedClientIp.test.js \
+            test/securityDetectionEngine.test.js \
+            test/loginSecurityMonitor.test.js \
+            test/suspectedIpMetrics.test.js
+
+          test -s coverage/security/lcov.info
+          grep -q 'middleware/securityDetectionEngine.js' coverage/security/lcov.info
+
       - name: Run SonarQube analysis
         uses: SonarSource/sonarqube-scan-action@v8.1.0
         with:
