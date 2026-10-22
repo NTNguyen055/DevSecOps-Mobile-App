@@ -1,0 +1,22 @@
+
+groups:
+  - name: application-security-detection
+    rules:
+      - alert: PossibleBruteForceLogin
+        expr: |
+          app_security_suspected_ip_last_detected_timestamp_seconds{
+            job="application-security",
+            type="possible_brute_force"
+          } > (time() - 600)
+        for: 0s
+        labels:
+          severity: warning
+          category: application-security
+        annotations:
+          summary: "Suspected brute-force login from IP {{ $labels.source_ip }}"
+          description: >-
+            Possible brute-force login activity detected.
+            Source IP: {{ $labels.source_ip }}.
+            Detection threshold: 10 failed login attempts
+            within 5 minutes.
+            The IP is a suspected source, not a confirmed attacker.

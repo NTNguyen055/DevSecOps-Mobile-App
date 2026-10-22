@@ -15,6 +15,9 @@ services:
     depends_on:
       - node-exporter
       - docker-exporter
+    networks:
+      - default
+      - app-metrics
 
   node-exporter:
     image: prom/node-exporter:v1.12.1
@@ -95,3 +98,8 @@ volumes:
 secrets:
   monitoring_webhook_token:
     file: ./secrets/monitoring_webhook_token
+
+networks:
+  app-metrics:
+    external: true
+    name: app_app-network
