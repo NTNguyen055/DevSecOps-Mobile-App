@@ -356,6 +356,70 @@ jobs:
           test -s coverage/security/lcov.info
           grep -q 'middleware/securityDetectionEngine.js' coverage/security/lcov.info
 
+      - name: Generate Shared Detector Integration Coverage
+        shell: bash
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://lb_test:lb_test_password_only_local@127.0.0.1:55432/lb_test_db
+        run: |
+          set -euo pipefail
+
+          echo "===== START ISOLATED TEST POSTGRESQL ====="
+
+          docker info >/dev/null
+
+          DB_CONTAINER="sonar-coverage-pg-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+
+          cleanup() {
+            docker rm -f "$DB_CONTAINER" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          docker run --rm -d \
+            --name "$DB_CONTAINER" \
+            -p 127.0.0.1:55432:5432 \
+            -e POSTGRES_USER=lb_test \
+            -e POSTGRES_PASSWORD=lb_test_password_only_local \
+            -e POSTGRES_DB=lb_test_db \
+            postgres:16-alpine
+
+          echo "===== WAIT FOR POSTGRESQL ====="
+
+          for attempt in $(seq 1 30); do
+            if docker exec "$DB_CONTAINER" \
+              pg_isready -U lb_test -d lb_test_db >/dev/null 2>&1; then
+              break
+            fi
+            sleep 2
+          done
+
+          docker exec "$DB_CONTAINER" \
+            pg_isready -U lb_test -d lb_test_db
+
+          echo "===== APPLY TEST MIGRATION ====="
+
+          docker exec -i "$DB_CONTAINER" \
+            psql -X -v ON_ERROR_STOP=1 \
+              -U lb_test \
+              -d lb_test_db \
+            < db/migrations/001_shared_brute_force_state.sql
+
+          echo "===== RUN INTEGRATION TESTS WITH COVERAGE ====="
+
+          npx --no-install c8 \
+            --reporter=text \
+            --reporter=lcov \
+            --reports-dir=coverage/integration \
+            mocha --exit test/integration/*.integration.js
+
+          echo "===== VERIFY LCOV REPORT ====="
+
+          test -s coverage/integration/lcov.info
+          grep -q 'middleware/sharedBruteForceDetector.js' \
+            coverage/integration/lcov.info
+
+          echo "SHARED DETECTOR INTEGRATION COVERAGE: PASS"
+
       - name: Run SonarQube analysis
         uses: SonarSource/sonarqube-scan-action@v8.1.0
         with:
