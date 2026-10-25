@@ -7,7 +7,13 @@ evaluation_interval: 1m
 tests:
   - interval: 1m
     input_series:
-      - series: 'app_security_suspected_ip_last_detected_timestamp_seconds{job="application-security",type="possible_brute_force",source_ip="198.51.100.77"}'
+      # Replica 1 reports a brute-force detection.
+      - series: 'app_security_suspected_ip_last_detected_timestamp_seconds{job="application-security",instance="devsecops-api:9464",type="possible_brute_force",source_ip="198.51.100.77"}'
+        values: '_ 60+0x11'
+
+      # Replica 2 reports the same detection.
+      # Prometheus must produce only one alert for this IP.
+      - series: 'app_security_suspected_ip_last_detected_timestamp_seconds{job="application-security",instance="devsecops-api-2:9464",type="possible_brute_force",source_ip="198.51.100.77"}'
         values: '_ 60+0x11'
 
     alert_rule_test:
@@ -52,4 +58,42 @@ tests:
       # Ten minutes after detection: no longer active.
       - eval_time: 11m
         alertname: PossibleBruteForceLogin
+        exp_alerts: []
+
+  # Verify security monitoring errors across two API replicas.
+  - interval: 1m
+    input_series:
+      # Replica 1 encounters one monitoring error at t = 2m.
+      - series: 'app_security_monitoring_errors_total{job="application-security",instance="devsecops-api:9464"}'
+        values: '0 0 1 1 1 1 1 1 1'
+
+      # Replica 2 encounters one monitoring error at t = 2m.
+      - series: 'app_security_monitoring_errors_total{job="application-security",instance="devsecops-api-2:9464"}'
+        values: '0 0 1 1 1 1 1 1 1'
+
+    alert_rule_test:
+      # No counter increase at t = 1m.
+      - eval_time: 1m
+        alertname: SecurityMonitoringErrors
+        exp_alerts: []
+
+      # Counters increase at t = 2m.
+      # Both replicas must produce one aggregated alert.
+      - eval_time: 2m
+        alertname: SecurityMonitoringErrors
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              category: application-security
+            exp_annotations:
+              summary: "Application security monitoring encountered errors"
+              description: >-
+                One or more errors occurred while processing
+                security monitoring observations during the last
+                5 minutes. Check the shared brute force detector
+                and PostgreSQL connectivity.
+
+      # No new errors in the preceding 5 minutes.
+      - eval_time: 8m
+        alertname: SecurityMonitoringErrors
         exp_alerts: []

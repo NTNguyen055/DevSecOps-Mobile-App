@@ -49,3 +49,19 @@ jobs:
             -v "$PWD/monitoring/prometheus/rules:/etc/prometheus/rules:ro" \
             prom/prometheus:v3.15.0 \
             check config /etc/prometheus/prometheus.yml
+
+      - name: Test Prometheus Security Alerts
+        run: |
+          docker run --rm \
+            --entrypoint promtool \
+            -v "$PWD/monitoring/prometheus:/etc/prometheus:ro" \
+            prom/prometheus:v3.15.0 \
+            test rules /etc/prometheus/security-alerts.test.yml
+
+      - name: Test Prometheus Container Alerts
+        run: |
+          docker run --rm \
+            --entrypoint promtool \
+            -v "$PWD/monitoring/prometheus:/etc/prometheus:ro" \
+            prom/prometheus:v3.15.0 \
+            test rules /etc/prometheus/container-alerts.test.yml

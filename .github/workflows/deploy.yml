@@ -12,10 +12,12 @@ on:
 permissions:
   id-token: write
   contents: read
+  actions: read
 
 concurrency:
-  group: production-deployment
+  group: devsecops-production-ec2
   cancel-in-progress: false
+  queue: max
 
 env:
   AWS_REGION: ap-southeast-1
@@ -24,19 +26,168 @@ env:
   DOMAIN: devsecops-mobile.duckdns.org
 
 jobs:
+  release_gate:
+    name: Verify Published Application Image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    outputs:
+      should_deploy: ${{ steps.check.outputs.should_deploy }}
+
+    steps:
+      - name: Check Docker Publish Result
+        id: check
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          CURRENT_REF: ${{ github.ref }}
+          SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+          SOURCE_EVENT: ${{ github.event.workflow_run.event }}
+          SOURCE_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          SOURCE_REPO: ${{ github.event.workflow_run.head_repository.full_name }}
+          SOURCE_RESULT: ${{ github.event.workflow_run.conclusion }}
+          CURRENT_SHA: ${{ github.sha }}
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "::notice::Manual production deployment is disabled until the published image and Security Scan can be verified."
+            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "$EVENT_NAME" != "workflow_run" ] ||
+             [ "$SOURCE_EVENT" != "push" ] ||
+             [ "$SOURCE_BRANCH" != "main" ] ||
+             [ "$SOURCE_REPO" != "$GITHUB_REPOSITORY" ] ||
+             [ "$SOURCE_RESULT" != "success" ]; then
+            echo "Skipping: ineligible Security Scan run"
+            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          [[ "$SOURCE_RUN_ID" =~ ^[0-9]+$ ]] || {
+            echo "Invalid source workflow run ID"
+            exit 1
+          }
+
+          JOBS_JSON=$(gh api \
+            "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}/jobs?per_page=100&filter=latest")
+
+          PUBLISH_RESULT=$(jq -r '
+            [.jobs[] |
+              select(.name == "Publish Docker Image") |
+              .conclusion
+            ] |
+            if length == 1 then .[0] else "unknown" end
+          ' <<< "$JOBS_JSON")
+
+          echo "Docker Publish result: $PUBLISH_RESULT"
+
+          if [ "$PUBLISH_RESULT" != "success" ]; then
+            echo "Application Deployment skipped: no successful image publish"
+            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          LATEST_MAIN_SHA=$(gh api \
+            "repos/${GITHUB_REPOSITORY}/branches/main" \
+            --jq '.commit.sha')
+
+          if [ "$SOURCE_SHA" != "$LATEST_MAIN_SHA" ]; then
+            echo "Skipping stale application release"
+            echo "Release SHA: $SOURCE_SHA"
+            echo "Latest main: $LATEST_MAIN_SHA"
+            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "===== VERIFY APPLICATION CI ====="
+
+          CI_VERIFIED=false
+
+          for attempt in $(seq 1 120); do
+            CI_RUNS_JSON=$(gh api \
+              "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${SOURCE_SHA}&branch=main&event=push&per_page=100")
+
+            CI_RUN_JSON=$(jq -c --arg sha "$SOURCE_SHA" '
+              [.workflow_runs[] |
+                select(
+                  .head_sha == $sha and
+                  .head_branch == "main" and
+                  .event == "push"
+                )
+              ] |
+              sort_by(.created_at, .id) |
+              last // {}
+            ' <<< "$CI_RUNS_JSON")
+
+            CI_RUN_ID=$(jq -r '.id // empty' <<< "$CI_RUN_JSON")
+            CI_STATUS=$(jq -r '.status // "missing"' <<< "$CI_RUN_JSON")
+            CI_RESULT=$(jq -r '.conclusion // "pending"' <<< "$CI_RUN_JSON")
+
+            echo "CI attempt ${attempt}: ${CI_STATUS} / ${CI_RESULT}"
+
+            if [ "$CI_STATUS" = "completed" ]; then
+              if [ "$CI_RESULT" != "success" ]; then
+                echo "::error::Application CI did not pass"
+                exit 1
+              fi
+
+              CI_JOBS_JSON=$(gh api \
+                "repos/${GITHUB_REPOSITORY}/actions/runs/${CI_RUN_ID}/jobs?per_page=100&filter=latest")
+
+              for REQUIRED_JOB in \
+                "Test (backend)" \
+                "Lint (backend)" \
+                "Lint (mobile client)"
+              do
+                JOB_RESULT=$(jq -r --arg name "$REQUIRED_JOB" '
+                  [.jobs[] |
+                    select(.name == $name) |
+                    .conclusion
+                  ] |
+                  if length == 1 then .[0]
+                  else "missing-or-duplicate" end
+                ' <<< "$CI_JOBS_JSON")
+
+                if [ "$JOB_RESULT" != "success" ]; then
+                  echo "::error::Required CI job failed: ${REQUIRED_JOB}"
+                  exit 1
+                fi
+              done
+
+              CI_VERIFIED=true
+              break
+            fi
+
+            sleep 10
+          done
+
+          if [ "$CI_VERIFIED" != "true" ]; then
+            echo "::error::Application CI verification timed out"
+            exit 1
+          fi
+
+          echo "APPLICATION CI GATE: PASS"
+
+          echo "Release is current and Docker image was published"
+          echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+
   deploy:
     name: Deploy to EC2
+    needs: release_gate
     outputs:
       deploy_status: ${{ steps.deploy.outcome }}
       zap_status: ${{ steps.zap.outputs.status }}
       rollback_status: ${{ steps.rollback.outcome }}
 
-    if: >
-      (github.event_name == 'workflow_dispatch' &&
-      github.ref == 'refs/heads/main') ||
-      (github.event_name == 'workflow_run' &&
-      github.event.workflow_run.conclusion == 'success')
+    if: needs.release_gate.outputs.should_deploy == 'true'
+
     runs-on: ubuntu-24.04
+    timeout-minutes: 75
 
     steps:
       - name: Checkout repository
@@ -53,10 +204,47 @@ jobs:
         shell: bash
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "image=${DOCKER_IMAGE}:latest" >> "$GITHUB_OUTPUT"
+            RELEASE_SHA="${{ github.sha }}"
           else
-            echo "image=${DOCKER_IMAGE}:${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
+            RELEASE_SHA="${{ github.event.workflow_run.head_sha }}"
           fi
+
+          if ! [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Invalid release commit SHA"
+            exit 1
+          fi
+
+          echo "commit=${RELEASE_SHA}" >> "$GITHUB_OUTPUT"
+          echo "image=${DOCKER_IMAGE}:${RELEASE_SHA}" >> "$GITHUB_OUTPUT"
+
+          echo "Release commit: ${RELEASE_SHA}"
+          echo "Release image: ${DOCKER_IMAGE}:${RELEASE_SHA}"
+
+      - name: Verify Release Is Current Before EC2 Deployment
+        shell: bash
+        env:
+          RELEASE_SHA: ${{ steps.image.outputs.commit }}
+        run: |
+          set -euo pipefail
+
+          echo "===== VERIFY RELEASE SHA ====="
+
+          LATEST_MAIN_SHA=$(git ls-remote origin refs/heads/main | awk '{print $1}')
+
+          if ! [[ "$LATEST_MAIN_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Unable to determine latest main commit"
+            exit 1
+          fi
+
+          echo "Release SHA: ${RELEASE_SHA}"
+          echo "Latest main: ${LATEST_MAIN_SHA}"
+
+          if [ "$RELEASE_SHA" != "$LATEST_MAIN_SHA" ]; then
+            echo "::error::Stale release detected. EC2 deployment aborted."
+            exit 1
+          fi
+
+          echo "PRE-DEPLOYMENT SHA CHECK: PASS"
 
       - name: Capture previous production image
         id: previous
@@ -67,13 +255,22 @@ jobs:
             --document-name "AWS-RunShellScript" \
             --comment "Capture previous production image before deployment" \
             --parameters commands='[
+              "set -e",
               "cd /home/ubuntu/app",
+
               "PREVIOUS_COMMIT=$(sudo -u ubuntu git rev-parse HEAD)",
               "echo \"PREVIOUS_COMMIT=${PREVIOUS_COMMIT}\"",
-              "PREVIOUS_IMAGE=$(docker inspect -f '\''{{.Config.Image}}'\'' devsecops-api 2>/dev/null || true)",
-              "echo \"Previous image: ${PREVIOUS_IMAGE}\"",
-              "if [ -z \"${PREVIOUS_IMAGE}\" ]; then echo \"ERROR: Previous production image not found.\"; exit 1; fi",
-              "echo \"PREVIOUS_IMAGE=${PREVIOUS_IMAGE}\""
+
+              "echo === Capture exact running image ID ===",
+              "PREVIOUS_IMAGE_ID=$(docker inspect -f '\''{{.Image}}'\'' devsecops-api)",
+              "docker image inspect \"${PREVIOUS_IMAGE_ID}\" >/dev/null",
+
+              "echo === Preserve previous image locally ===",
+              "PREVIOUS_IMAGE=ntnguyen055/devsecops-mobile-app:rollback-${PREVIOUS_COMMIT}",
+              "docker image tag \"${PREVIOUS_IMAGE_ID}\" \"${PREVIOUS_IMAGE}\"",
+
+              "echo \"PREVIOUS_IMAGE=${PREVIOUS_IMAGE}\"",
+              "echo \"PREVIOUS_IMAGE_ID=${PREVIOUS_IMAGE_ID}\""
             ]' \
             --query 'Command.CommandId' \
             --output text)
@@ -146,18 +343,51 @@ jobs:
             --instance-ids "${EC2_INSTANCE_ID}" \
             --document-name "AWS-RunShellScript" \
             --comment "Deploy DevSecOps Mobile App" \
-            --parameters commands='[
+            --timeout-seconds 180 \
+            --parameters '{"commands":[
               "set -e",
+              "command -v flock >/dev/null",
+              "exec 9>/var/lock/devsecops-production-deploy.lock",
+              "flock -n 9 || { echo Deployment lock busy; exit 1; }",
               "export DOMAIN=${{ env.DOMAIN }}",
               "export DOCKER_IMAGE=${{ steps.image.outputs.image }}",
+              "export RELEASE_COMMIT=${{ steps.image.outputs.commit }}",
 
-              "echo === Sync repository ===",
+              "echo === Sync repository to exact release commit ===",
               "cd /home/ubuntu/app",
               "sudo -u ubuntu git fetch origin main",
-              "sudo -u ubuntu git reset --hard origin/main",
+
+              "echo === Verify release commit ===",
+              "sudo -u ubuntu git cat-file -e ${RELEASE_COMMIT}^{commit}",
+              "sudo -u ubuntu git merge-base --is-ancestor ${RELEASE_COMMIT} origin/main",
+
+              "echo === Checkout exact release revision ===",
+              "sudo -u ubuntu git reset --hard ${RELEASE_COMMIT}",
+              "test \"$(sudo -u ubuntu git rev-parse HEAD)\" = \"${RELEASE_COMMIT}\"",
 
               "echo === Pull Docker image ===",
               "docker compose --env-file .env.production pull",
+
+              "echo === Prepare trusted RDS CA bundle ===",
+              "CA_FILE=$(mktemp /tmp/devsecops-rds-ca.XXXXXXXX.pem)",
+              "trap \"rm -f -- ${CA_FILE}\" EXIT",
+              "curl --fail --silent --show-error --location --connect-timeout 5 --max-time 30 https://truststore.pki.rds.amazonaws.com/ap-southeast-1/ap-southeast-1-bundle.pem --output \"${CA_FILE}\"",
+              "test -s \"${CA_FILE}\"",
+              "grep -q -- \"-----BEGIN CERTIFICATE-----\" \"${CA_FILE}\"",
+              "chmod 0644 \"${CA_FILE}\"",
+
+              "echo === Verify release migration artifacts ===",
+              "test -f scripts/apply-shared-brute-force-migration.js",
+              "test -f db/migrations/001_shared_brute_force_state.sql",
+              "docker image inspect \"${DOCKER_IMAGE}\" >/dev/null",
+
+              "echo === Migration preflight without schema changes ===",
+              "docker compose --env-file .env.production run --rm --no-deps -T --pull never -e RDS_CA_FILE=/run/rds-ca.pem -v \"${CA_FILE}:/run/rds-ca.pem:ro\" app node scripts/apply-shared-brute-force-migration.js --check-connection",
+
+              "echo === Apply shared brute force schema migration ===",
+              "docker compose --env-file .env.production run --rm --no-deps -T --pull never -e RDS_CA_FILE=/run/rds-ca.pem -v \"${CA_FILE}:/run/rds-ca.pem:ro\" app node scripts/apply-shared-brute-force-migration.js",
+
+              "echo === Migration successful ===",
 
               "echo === Start application ===",
               "docker compose --env-file .env.production up -d --wait",
@@ -165,8 +395,11 @@ jobs:
               "echo === Check application container ===",
               "docker compose --env-file .env.production ps",
 
-              "echo === Check local backend health ===",
+              "echo === Check Replica 1 health ===",
               "curl --fail --silent --show-error http://127.0.0.1:4001/health/db",
+
+              "echo === Check Replica 2 health ===",
+              "curl --fail --silent --show-error http://127.0.0.1:4002/health/db",
 
               "echo === Install Nginx configuration ===",
               "sudo install -m 644 nginx/devsecops-api.conf /etc/nginx/sites-available/devsecops-api",
@@ -197,39 +430,51 @@ jobs:
               "echo \"${HTTP_LOCATION}\" | grep -q \"https://${DOMAIN}/health/db\"",
 
               "echo === Deployment verification completed ==="
-            ]' \
+            ],"executionTimeout":["900"]}' \
             --query 'Command.CommandId' \
             --output text)
 
           echo "SSM Command ID: ${COMMAND_ID}"
+          echo "command_id=${COMMAND_ID}" >> "$GITHUB_OUTPUT"
 
-          for i in {1..30}; do
+          STATUS="Unknown"
+
+          for i in {1..120}; do
             STATUS=$(aws ssm get-command-invocation \
               --command-id "${COMMAND_ID}" \
               --instance-id "${EC2_INSTANCE_ID}" \
               --query 'Status' \
-              --output text)
+              --output text 2>/dev/null) || STATUS="Unknown"
 
-            echo "SSM status: ${STATUS}"
+            echo "Deployment SSM attempt ${i}: ${STATUS}"
 
             case "${STATUS}" in
               Success)
                 break
                 ;;
               Failed|Cancelled|TimedOut)
-                echo "Deployment failed"
-                aws ssm get-command-invocation \
-                  --command-id "${COMMAND_ID}" \
-                  --instance-id "${EC2_INSTANCE_ID}"
-                exit 1
+                echo "Deployment SSM reached failure status"
+                break
+                ;;
+              Pending|InProgress|Delayed|Cancelling|Unknown)
+                ;;
+              *)
+                echo "Unrecognized SSM status: ${STATUS}"
                 ;;
             esac
 
-            sleep 5
+            sleep 10
           done
 
           if [ "${STATUS}" != "Success" ]; then
-            echo "Deployment did not finish within the expected time"
+            echo "Deployment did not complete successfully."
+            echo "Final observed status: ${STATUS}"
+
+            aws ssm get-command-invocation \
+              --command-id "${COMMAND_ID}" \
+              --instance-id "${EC2_INSTANCE_ID}" \
+              || true
+
             exit 1
           fi
 
@@ -255,23 +500,31 @@ jobs:
         id: zap
         shell: bash
         run: |
-          set +e
+          set -euo pipefail
 
           echo "=== Starting OWASP ZAP Baseline Scan ==="
 
           mkdir -p zap-reports
           chmod 777 zap-reports
 
+          test -s .zap/baseline.conf
+
+          cp .zap/baseline.conf zap-reports/baseline.conf
+
+          set +e
+
           docker run --rm -t \
             -v "$(pwd)/zap-reports:/zap/wrk/:rw" \
             ghcr.io/zaproxy/zaproxy:stable \
             zap-baseline.py \
             -t "https://${DOMAIN}" \
+            -c baseline.conf \
             -r zap-baseline-report.html \
             -J zap-baseline-report.json \
             -x zap-baseline-report.xml
 
           ZAP_STATUS=$?
+          set -e
 
           echo "ZAP exit code: ${ZAP_STATUS}"
           echo "status=${ZAP_STATUS}" >> "$GITHUB_OUTPUT"
@@ -362,12 +615,48 @@ jobs:
 
           echo "Previous production commit: ${PREVIOUS_COMMIT}"
 
+          DEPLOY_COMMAND_ID="${{ steps.deploy.outputs.command_id }}"
+
+          if [ -z "${DEPLOY_COMMAND_ID}" ]; then
+            echo "BLOCKED: Deployment SSM Command ID is unavailable."
+            echo "Manual Production verification is required."
+            exit 1
+          fi
+
+          echo "===== VERIFY DEPLOYMENT SSM IS FINISHED ====="
+
+          if ! DEPLOY_STATUS=$(aws ssm get-command-invocation \
+            --command-id "${DEPLOY_COMMAND_ID}" \
+            --instance-id "${EC2_INSTANCE_ID}" \
+            --query 'Status' \
+            --output text); then
+            echo "BLOCKED: Cannot verify deployment SSM status."
+            exit 1
+          fi
+
+          echo "Deployment SSM status: ${DEPLOY_STATUS}"
+
+          case "${DEPLOY_STATUS}" in
+            Success|Failed)
+              echo "Deployment command reached a terminal state."
+              ;;
+            *)
+              echo "BLOCKED: Automatic rollback is unsafe."
+              echo "Inspect SSM and EC2 before manual recovery."
+              exit 1
+              ;;
+          esac
+
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "${EC2_INSTANCE_ID}" \
             --document-name "AWS-RunShellScript" \
             --comment "Rollback DevSecOps Mobile App after CD failure" \
-            --parameters commands='[
+            --timeout-seconds 180 \
+            --parameters '{"commands":[
               "set -e",
+              "command -v flock >/dev/null",
+              "exec 9>/var/lock/devsecops-production-deploy.lock",
+              "flock -n 9 || { echo Deployment lock busy; exit 1; }",
               "cd /home/ubuntu/app",
               "export DOCKER_IMAGE='${PREVIOUS_IMAGE}'",
               "export DOMAIN='${DOMAIN}'",
@@ -378,17 +667,8 @@ jobs:
               "echo === Restore previous repository revision ===",
               "sudo -u ubuntu git reset --hard '${PREVIOUS_COMMIT}'",
 
-              "echo === Pull previous Docker image ===",
-              "docker pull ${DOCKER_IMAGE}",
-
-              "echo === Restore previous production image ===",
-              "docker compose --env-file .env.production up -d --wait",
-
-              "echo === Check rollback container ===",
-              "docker compose --env-file .env.production ps",
-
-              "echo === Validate rollback health ===",
-              "curl --fail --silent --show-error http://127.0.0.1:4001/health/db",
+              "echo === Verify preserved rollback image ===",
+              "docker image inspect ${DOCKER_IMAGE} >/dev/null",
 
               "echo === Restore previous Nginx configuration ===",
               "sudo test -f nginx/devsecops-api.conf",
@@ -401,43 +681,64 @@ jobs:
               "echo === Reload restored Nginx configuration ===",
               "sudo systemctl reload nginx",
 
+              "echo === Restore previous image and remove orphaned replicas ===",
+              "docker compose --env-file .env.production up -d --wait --remove-orphans --pull never",
+
+              "echo === Verify restored services ===",
+              "docker compose --env-file .env.production ps",
+
+              "echo === Validate rollback API health ===",
+              "curl --fail --silent --show-error http://127.0.0.1:4001/health/db",
+
               "echo === Validate public HTTPS after rollback ===",
               "curl --fail --silent --show-error https://${DOMAIN}/health/db",
 
               "echo === Rollback verification completed ==="
-            ]' \
+
+            ],"executionTimeout":["900"]}' \
             --query 'Command.CommandId' \
             --output text)
 
           echo "Rollback SSM Command ID: ${COMMAND_ID}"
 
-          for i in {1..30}; do
+          STATUS="Unknown"
+
+          for i in {1..120}; do
             STATUS=$(aws ssm get-command-invocation \
               --command-id "${COMMAND_ID}" \
               --instance-id "${EC2_INSTANCE_ID}" \
               --query 'Status' \
-              --output text)
+              --output text 2>/dev/null) || STATUS="Unknown"
 
-            echo "Rollback SSM status: ${STATUS}"
+            echo "Rollback SSM attempt ${i}: ${STATUS}"
 
             case "${STATUS}" in
               Success)
                 break
                 ;;
               Failed|Cancelled|TimedOut)
-                echo "Rollback failed"
-                aws ssm get-command-invocation \
-                  --command-id "${COMMAND_ID}" \
-                  --instance-id "${EC2_INSTANCE_ID}"
-                exit 1
+                echo "Rollback SSM reached failure status"
+                break
+                ;;
+              Pending|InProgress|Delayed|Cancelling|Unknown)
+                ;;
+              *)
+                echo "Unrecognized SSM status: ${STATUS}"
                 ;;
             esac
 
-            sleep 5
+            sleep 10
           done
 
           if [ "${STATUS}" != "Success" ]; then
-            echo "Rollback did not finish within the expected time"
+            echo "Rollback did not complete successfully."
+            echo "Final observed status: ${STATUS}"
+
+            aws ssm get-command-invocation \
+              --command-id "${COMMAND_ID}" \
+              --instance-id "${EC2_INSTANCE_ID}" \
+              || true
+
             exit 1
           fi
 
@@ -462,11 +763,13 @@ jobs:
   telegram-notification:
     name: Telegram Deploy Notification
     needs:
+      - release_gate
       - deploy
     runs-on: ubuntu-24.04
 
     if: >
       always() &&
+      needs.release_gate.outputs.should_deploy == 'true' &&
       (
         (github.event_name == 'workflow_dispatch' &&
         github.ref == 'refs/heads/main') ||

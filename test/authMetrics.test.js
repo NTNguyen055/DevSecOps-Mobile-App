@@ -59,11 +59,19 @@ describe('Application Authentication Metrics', () => {
     process.env.JWT_SECRET = 'test-only-auth-metrics-secret';
   });
 
+  // Prevent authentication unit tests from connecting
+  // to the PostgreSQL shared detection state.
+  beforeEach(() => {
+    loginSecurityMonitor.recordFailedLogin =
+      async () => null;
+  });
+
   afterEach(() => {
     userModel.findUserByEmail = originalFindUser;
     bcrypt.compare = originalCompare;
     loginSecurityMonitor.recordFailedLogin = originalRecordFailedLogin;
   });
+
 
   after(() => {
     if (originalJwtSecret === undefined) {

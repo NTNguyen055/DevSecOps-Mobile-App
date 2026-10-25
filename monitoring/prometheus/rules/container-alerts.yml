@@ -1,9 +1,17 @@
+
 groups:
   - name: containers
     rules:
 
+      # Replica 1 is stopped or missing.
       - alert: DevSecOpsAPIDown
-        expr: absent(container_state{name="devsecops-api",state="running"})
+        expr: |
+          (
+            container_state{name="devsecops-api",state="running"} == 0
+            or
+            absent(container_state{name="devsecops-api",state="running"})
+          )
+          and on() (up{job="docker-exporter"} == 1)
         for: 2m
         labels:
           severity: critical
@@ -11,29 +19,76 @@ groups:
           summary: "devsecops-api container is down"
           description: "The devsecops-api container has not been running for more than 2 minutes."
 
-      - alert: DevSecOpsAPIUnhealthy
-        expr: container_health_status{name="devsecops-api",status="unhealthy"} == 1
+      # Replica 2 is stopped or missing.
+      - alert: DevSecOpsAPIReplica2Down
+        expr: |
+          (
+            (
+              container_state{name="devsecops-api-2",state="running"} == 0
+              or
+              absent(container_state{name="devsecops-api-2",state="running"})
+            )
+            and on()
+            (up{job="docker-exporter"} == 1)
+          )
+          and on()
+          (
+            max(
+              app_deployment_expected_replicas{
+                job="application-security"
+              }
+            ) >= 2
+          )
         for: 2m
         labels:
           severity: critical
         annotations:
-          summary: "devsecops-api container is unhealthy"
-          description: "The devsecops-api container health status has been unhealthy for more than 2 minutes."
+          summary: "devsecops-api-2 container is down"
+          description: "The devsecops-api-2 container has not been running for more than 2 minutes."
 
+      # Detect unhealthy status on either replica.
+      - alert: DevSecOpsAPIUnhealthy
+        expr: |
+          container_health_status{
+            name=~"devsecops-api(-2)?",
+            status="unhealthy"
+          } == 1
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.name }} container is unhealthy"
+          description: "{{ $labels.name }} has been unhealthy for more than 2 minutes."
+
+      # Monitor CPU on both replicas independently.
       - alert: DevSecOpsAPICPUHigh
-        expr: 100 * rate(container_cpu_usage_seconds_total{name="devsecops-api"}[5m]) > 80
+        expr: |
+          100 * rate(
+            container_cpu_usage_seconds_total{
+              name=~"devsecops-api(-2)?"
+            }[5m]
+          ) > 80
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "devsecops-api CPU usage is high"
-          description: "The devsecops-api container CPU usage has been above 80% for more than 5 minutes."
+          summary: "{{ $labels.name }} CPU usage is high"
+          description: "{{ $labels.name }} CPU usage has been above 80% for more than 5 minutes."
 
+      # Monitor memory on both replicas independently.
       - alert: DevSecOpsAPIMemoryHigh
-        expr: 100 * container_memory_working_set_bytes{name="devsecops-api"} / container_memory_limit_bytes{name="devsecops-api"} > 85
+        expr: |
+          100 *
+          container_memory_working_set_bytes{
+            name=~"devsecops-api(-2)?"
+          }
+          /
+          container_memory_limit_bytes{
+            name=~"devsecops-api(-2)?"
+          } > 85
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "devsecops-api memory usage is high"
-          description: "The devsecops-api container memory usage has been above 85% of its limit for more than 5 minutes."
+          summary: "{{ $labels.name }} memory usage is high"
+          description: "{{ $labels.name }} memory usage has exceeded 85% of its limit for more than 5 minutes."
