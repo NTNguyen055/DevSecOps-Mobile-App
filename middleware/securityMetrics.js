@@ -4,11 +4,28 @@
 const {
   Registry,
   Counter,
-  Histogram
+  Histogram,
+  Gauge
 } = require('@prometheus-io/client');
 
 // Dedicated registry for Application Security Metrics.
 const registry = new Registry();
+
+const expectedApiReplicas = Number(
+  process.env.EXPECTED_API_REPLICAS ?? '1'
+);
+
+if (!Number.isSafeInteger(expectedApiReplicas) || expectedApiReplicas < 1) {
+  throw new Error('EXPECTED_API_REPLICAS must be a positive integer');
+}
+
+const appDeploymentExpectedReplicas = new Gauge({
+  name: 'app_deployment_expected_replicas',
+  help: 'Number of API replicas expected by the current deployment',
+  registers: [registry]
+});
+
+appDeploymentExpectedReplicas.set(expectedApiReplicas);
 
 // HTTP requests grouped by method, normalized route and status.
 const httpRequestsTotal = new Counter({
@@ -42,10 +59,17 @@ const securityDetectionsTotal = new Counter({
   registers: [registry]
 });
 
+const securityMonitoringErrorsTotal = new Counter({
+  name: 'app_security_monitoring_errors_total',
+  help: 'Total errors encountered while processing security monitoring observations',
+  registers: [registry]
+});
+
 module.exports = {
   registry,
   httpRequestsTotal,
   httpRequestDurationSeconds,
   authLoginAttemptsTotal,
-  securityDetectionsTotal
+  securityDetectionsTotal,
+  securityMonitoringErrorsTotal
 };

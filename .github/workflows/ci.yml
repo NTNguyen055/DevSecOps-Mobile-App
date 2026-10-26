@@ -58,6 +58,20 @@ jobs:
           --health-timeout 5s
           --health-retries 10
 
+      security-test-postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: lb_test
+          POSTGRES_PASSWORD: lb_test_password_only_local
+          POSTGRES_DB: lb_test_db
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U lb_test -d lb_test_db"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     env:
       NODE_ENV: test
       PORT: 4001
@@ -79,6 +93,18 @@ jobs:
       - name: Apply DB schema
         run: npm run db:schema
 
+      - name: Apply shared detector migration to backend CI database
+        run: |
+          docker run --rm --network host -i \
+            -e PGPASSWORD=ci_password \
+            postgres:16-alpine \
+            psql -X -v ON_ERROR_STOP=1 \
+              -h 127.0.0.1 \
+              -p 5432 \
+              -U ci_user \
+              -d ci_ecommerce_db \
+            < db/migrations/001_shared_brute_force_state.sql
+
       - name: Start backend
         run: npm start > server.log 2>&1 &
 
@@ -98,6 +124,23 @@ jobs:
 
       - name: Run backend tests
         run: npm test
+
+      - name: Apply shared detector integration migration
+        run: |
+          docker run --rm --network host -i \
+            -e PGPASSWORD=lb_test_password_only_local \
+            postgres:16-alpine \
+            psql -X -v ON_ERROR_STOP=1 \
+              -h 127.0.0.1 \
+              -p 55432 \
+              -U lb_test \
+              -d lb_test_db \
+            < db/migrations/001_shared_brute_force_state.sql
+
+      - name: Run shared detector integration tests
+        env:
+          DATABASE_URL: postgresql://lb_test:lb_test_password_only_local@127.0.0.1:55432/lb_test_db
+        run: npx --no-install mocha --exit test/integration/*.integration.js
 
       - name: Show backend logs on failure
         if: failure()
@@ -122,6 +165,40 @@ jobs:
 
       - name: Run backend lint
         run: npm run lint
+
+      - name: Validate Production Nginx Configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "===== PREPARE TEST TLS CERTIFICATE ====="
+
+          TLS_DIR=$(mktemp -d)
+          trap 'rm -rf "$TLS_DIR"' EXIT
+
+          openssl req \
+            -x509 \
+            -nodes \
+            -newkey rsa:2048 \
+            -days 1 \
+            -keyout "$TLS_DIR/privkey.pem" \
+            -out "$TLS_DIR/fullchain.pem" \
+            -subj "/CN=devsecops-mobile.duckdns.org" \
+            >/dev/null 2>&1
+
+          test -s "$TLS_DIR/privkey.pem"
+          test -s "$TLS_DIR/fullchain.pem"
+
+          echo "===== VALIDATE NGINX CONFIGURATION ====="
+
+          docker run --rm \
+            --mount "type=bind,source=${GITHUB_WORKSPACE}/nginx/devsecops-api.conf,target=/etc/nginx/conf.d/default.conf,readonly" \
+            --mount "type=bind,source=${TLS_DIR},target=/etc/letsencrypt/live/devsecops-mobile.duckdns.org,readonly" \
+            --entrypoint nginx \
+            nginx:stable-alpine \
+            -t
+
+          echo "NGINX PRODUCTION CONFIG: PASS"
 
   lint-client:
     name: Lint (mobile client)

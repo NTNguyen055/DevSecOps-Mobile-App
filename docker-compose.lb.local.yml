@@ -1,0 +1,60 @@
+
+x-local-api: &local-api
+  image: devsecops-lb-api:local
+  command: ["node", "server.js"]
+
+  environment:
+    NODE_ENV: test
+    PORT: "4001"
+    METRICS_PORT: "9464"
+    METRICS_HOST: "0.0.0.0"
+    EXPECTED_API_REPLICAS: "2"
+    DATABASE_URL: "postgresql://lb_test:lb_test_password_only_local@devsecops-lb-test-postgres:5432/lb_test_db"
+    JWT_SECRET: "local-lb-test-secret-not-for-production"
+    CLIENT_ORIGIN: "*"
+    TRUSTED_PROXY_IP: "172.21.0.5"
+
+  networks:
+    - lb-test-net
+
+  security_opt:
+    - no-new-privileges:true
+
+services:
+  api-1:
+    <<: *local-api
+    ports:
+      - "127.0.0.1:14001:4001"
+      - "127.0.0.1:19464:9464"
+
+  api-2:
+    <<: *local-api
+    ports:
+      - "127.0.0.1:14002:4001"
+      - "127.0.0.1:19465:9464"
+
+  nginx-lb:
+    image: nginx:stable-alpine
+
+    ports:
+      - "127.0.0.1:18080:8080"
+
+    volumes:
+      - ./nginx/lb.local.conf:/etc/nginx/conf.d/default.conf:ro
+
+    depends_on:
+      api-1:
+        condition: service_healthy
+      api-2:
+        condition: service_healthy
+
+    networks:
+      - lb-test-net
+
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  lb-test-net:
+    external: true
+    name: devsecops-lb-test-net

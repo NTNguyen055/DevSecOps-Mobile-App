@@ -14,8 +14,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: monitoring-deployment
+  group: devsecops-production-ec2
   cancel-in-progress: false
+  queue: max
 
 env:
   AWS_REGION: ap-southeast-1

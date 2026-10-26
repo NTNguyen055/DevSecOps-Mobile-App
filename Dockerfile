@@ -24,6 +24,7 @@ COPY middleware/ middleware/
 COPY db/ db/
 COPY docs/ docs/
 COPY scripts/ scripts/
+COPY certs/rds-ca.pem certs/rds-ca.pem
 
 # npm is not required at runtime
 RUN rm -rf /usr/local/lib/node_modules/npm
@@ -34,6 +35,7 @@ EXPOSE 4001
 
 ENV NODE_ENV=production
 ENV PORT=4001
+ENV RDS_CA_FILE=/app/certs/rds-ca.pem
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD node -e "require('http').get('http://localhost:4001/health/db', (res) => process.exit(res.statusCode === 200 ? 0 : 1))" || exit 1

@@ -282,9 +282,81 @@ jobs:
             client/npm-audit-client.json \
             security/npm-audit-exceptions.json
 
+  integration-coverage:
+    name: Generate PostgreSQL Integration Coverage
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
+    runs-on: ubuntu-24.04
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: lb_test
+          POSTGRES_PASSWORD: lb_test_password_only_local
+          POSTGRES_DB: lb_test_db
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U lb_test -d lb_test_db"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://lb_test:lb_test_password_only_local@127.0.0.1:55432/lb_test_db
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install backend dependencies
+        run: npm ci --no-audit
+
+      - name: Apply shared detector migration
+        run: |
+          docker run --rm --network host -i \
+            -e PGPASSWORD=lb_test_password_only_local \
+            postgres:16-alpine \
+            psql -X -v ON_ERROR_STOP=1 \
+              -h 127.0.0.1 \
+              -p 55432 \
+              -U lb_test \
+              -d lb_test_db \
+            < db/migrations/001_shared_brute_force_state.sql
+
+      - name: Generate integration LCOV
+        run: |
+          set -euo pipefail
+
+          npx --no-install c8 \
+            --reporter=text \
+            --reporter=lcov \
+            --reports-dir=coverage/integration \
+            mocha --exit test/integration/*.integration.js
+
+          test -s coverage/integration/lcov.info
+          grep -q 'middleware/sharedBruteForceDetector.js' \
+            coverage/integration/lcov.info
+
+      - name: Upload integration coverage
+        uses: actions/upload-artifact@v7
+        with:
+          name: sonar-integration-lcov
+          path: coverage/integration/lcov.info
+          if-no-files-found: error
+          retention-days: 1
+
   sonarqube:
     name: SAST (SonarQube)
-    needs: changes
+    needs:
+      - changes
+      - integration-coverage
     if: needs.changes.outputs.app == 'true'
     runs-on: [self-hosted, Linux, X64, devsecops-tooling]
 
@@ -355,6 +427,24 @@ jobs:
 
           test -s coverage/security/lcov.info
           grep -q 'middleware/securityDetectionEngine.js' coverage/security/lcov.info
+
+      - name: Download Shared Detector Integration Coverage
+        uses: actions/download-artifact@v8
+        with:
+          name: sonar-integration-lcov
+          path: coverage/integration
+
+      - name: Verify Shared Detector Integration Coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test -s coverage/integration/lcov.info
+
+          grep -q 'middleware/sharedBruteForceDetector.js' \
+            coverage/integration/lcov.info
+
+          echo "INTEGRATION LCOV: PASS"
 
       - name: Run SonarQube analysis
         uses: SonarSource/sonarqube-scan-action@v8.1.0
