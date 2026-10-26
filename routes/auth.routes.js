@@ -72,7 +72,7 @@ router.post('/login', async (req, res) => {
         reason: 'invalid_credentials'
       });
 
-      loginSecurityMonitor.recordFailedLogin(req);
+      await loginSecurityMonitor.recordFailedLogin(req);
 
       return res.status(401).json({
         message: 'Invalid email or password'
@@ -87,7 +87,7 @@ router.post('/login', async (req, res) => {
         reason: 'invalid_credentials'
       });
 
-      loginSecurityMonitor.recordFailedLogin(req);
+      await loginSecurityMonitor.recordFailedLogin(req);
 
       return res.status(401).json({
         message: 'Invalid email or password'

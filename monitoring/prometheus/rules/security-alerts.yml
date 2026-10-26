@@ -4,10 +4,12 @@ groups:
     rules:
       - alert: PossibleBruteForceLogin
         expr: |
-          app_security_suspected_ip_last_detected_timestamp_seconds{
-            job="application-security",
-            type="possible_brute_force"
-          } > (time() - 600)
+          max by (job, source_ip, type) (
+            app_security_suspected_ip_last_detected_timestamp_seconds{
+              job="application-security",
+              type="possible_brute_force"
+            }
+          ) > (time() - 600)
         for: 0s
         labels:
           severity: warning
@@ -20,3 +22,24 @@ groups:
             Detection threshold: 10 failed login attempts
             within 5 minutes.
             The IP is a suspected source, not a confirmed attacker.
+
+      - alert: SecurityMonitoringErrors
+        expr: |
+          sum(
+            increase(
+              app_security_monitoring_errors_total{
+                job="application-security"
+              }[5m]
+            )
+          ) > 0
+        for: 0m
+        labels:
+          severity: warning
+          category: application-security
+        annotations:
+          summary: "Application security monitoring encountered errors"
+          description: >-
+            One or more errors occurred while processing
+            security monitoring observations during the last
+            5 minutes. Check the shared brute force detector
+            and PostgreSQL connectivity.

@@ -1,5 +1,5 @@
 services:
-  app:
+  app: &api-template
     image: ${DOCKER_IMAGE}
 
     container_name: devsecops-api
@@ -12,6 +12,7 @@ services:
       PORT: 4001
       METRICS_PORT: 9464
       METRICS_HOST: "0.0.0.0"
+      EXPECTED_API_REPLICAS: "2"
       TRUSTED_PROXY_IP: "172.18.0.1"
       NODE_ENV: production
 
@@ -55,6 +56,14 @@ services:
 
     security_opt:
       - no-new-privileges:true
+
+  app-2:
+    <<: *api-template
+
+    container_name: devsecops-api-2
+
+    ports:
+      - "127.0.0.1:4002:4001"
 
 networks:
   app-network:

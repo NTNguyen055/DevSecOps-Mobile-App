@@ -2,58 +2,95 @@
 'use strict';
 
 const {
-  createBruteForceDetector
-} = require('./securityDetectionEngine');
-
-const {
-  securityDetectionsTotal
+  securityDetectionsTotal,
+  securityMonitoringErrorsTotal
 } = require('./securityMetrics');
 
 const {
   recordSuspectedIp
 } = require('./suspectedIpMetrics');
 
-// One shared detector for the application process.
-const detector = createBruteForceDetector({
-  windowMs: 5 * 60 * 1000,
-  threshold: 10,
-  cooldownMs: 5 * 60 * 1000,
-  maxTrackedIps: 1000,
-  maxEventsPerIp: 256
-});
+// Allow an isolated detector to be injected for unit tests.
+function createLoginSecurityMonitor(detector) {
+  if (typeof detector?.recordFailedLogin !== 'function') {
+    throw new TypeError('A valid detector is required');
+  }
 
-let monitoringErrors = 0;
+  let monitoringErrors = 0;
 
-function recordFailedLogin(req) {
-  try {
-    // Resolve the client IP using Express trusted proxy settings.
-    const event = detector.recordFailedLogin(req.ip);
+  async function recordFailedLogin(req) {
+    try {
+      const event = await detector.recordFailedLogin(req.ip);
 
-    // Count actual detection events, not every failed login.
-    if (event) {
-    securityDetectionsTotal.inc({
-        type: event.type
-    });
+      if (event) {
+        securityDetectionsTotal.inc({
+          type: event.type
+        });
 
-    recordSuspectedIp(event);
+        recordSuspectedIp(event);
+      }
+
+      return event;
+    } catch {
+      // Monitoring failures must not interrupt authentication.
+      monitoringErrors++;
+      securityMonitoringErrorsTotal.inc();
+      return null;
     }
+  }
 
-    return event;
+  function getMonitorStats() {
+    return { monitoringErrors };
+  }
+
+  return {
+    recordFailedLogin,
+    getMonitorStats
+  };
+}
+
+// Initialize the PostgreSQL-backed detector lazily.
+// This allows unit tests to run without a real database.
+let defaultMonitor;
+let initializationErrors = 0;
+
+function getDefaultMonitor() {
+  if (!defaultMonitor) {
+    const {
+      createSharedBruteForceDetector
+    } = require('./sharedBruteForceDetector');
+
+    defaultMonitor = createLoginSecurityMonitor(
+      createSharedBruteForceDetector()
+    );
+  }
+
+  return defaultMonitor;
+}
+
+async function recordFailedLogin(req) {
+  try {
+    return await getDefaultMonitor().recordFailedLogin(req);
   } catch {
-    // Security monitoring must not break authentication.
-    monitoringErrors++;
+    initializationErrors++;
+    securityMonitoringErrorsTotal.inc();
     return null;
   }
 }
 
 function getMonitorStats() {
+  const stats = defaultMonitor
+    ? defaultMonitor.getMonitorStats()
+    : { monitoringErrors: 0 };
+
   return {
-    ...detector.getStats(),
-    monitoringErrors
+    monitoringErrors:
+      stats.monitoringErrors + initializationErrors
   };
 }
 
 module.exports = {
   recordFailedLogin,
-  getMonitorStats
+  getMonitorStats,
+  createLoginSecurityMonitor
 };
